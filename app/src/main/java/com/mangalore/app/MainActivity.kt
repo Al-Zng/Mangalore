@@ -41,6 +41,7 @@ import androidx.compose.ui.text.style.*
 import androidx.compose.ui.unit.*
 import androidx.compose.ui.viewinterop.AndroidView
 import org.json.JSONArray
+import coil.compose.AsyncImage
 
 // ─────────────────────────────────────────────────────────────
 // DESIGN TOKENS — Mangamello palette
@@ -88,6 +89,8 @@ private data class Manga(
     val score: Float,
     val chapters: Int,
     val coverColors: List<Color>,
+    val coverUrl: String = "",
+    val url: String = "",
     val genre: List<String> = listOf("أكشن", "إثارة"),
     val status: String = "مستمر",
     val origin: String = "مانهوا كورية",
@@ -132,7 +135,8 @@ private fun MangaloreApp() {
     var drawer  by remember { mutableStateOf(false) }
     var picked  by remember { mutableStateOf<Manga?>(null) }
     var reading by remember { mutableStateOf<Manga?>(null) }
-    var showMangalekGate by remember { mutableStateOf(true) }
+    var showMangalekGate by remember { mutableStateOf(false) }
+    var pendingMangalekUrl by remember { mutableStateOf("") }
     var showEntryAnimation by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
@@ -175,7 +179,11 @@ private fun MangaloreApp() {
                             picked!!,
                             accent = themeAccent,
                             onBack = { picked = null },
-                            onRead = { reading = picked }
+                            onRead = {
+                                pendingMangalekUrl = picked?.url.orEmpty()
+                                reading = picked
+                                showMangalekGate = true
+                            }
                         )
                         screen == "search" -> SearchScreen(
                             accent = themeAccent,
@@ -236,7 +244,10 @@ private fun MangaloreApp() {
                 }
 
                 if (showMangalekGate) {
-                    MangalekCloudflareGate(onVerified = { showMangalekGate = false })
+                    MangalekCloudflareGate(
+                        url = pendingMangalekUrl,
+                        onVerified = { showMangalekGate = false }
+                    )
                 }
             }
         }
@@ -281,6 +292,14 @@ private fun CoverBox(
             .clip(RoundedCornerShape(12.dp))
             .background(Brush.linearGradient(manga.coverColors, start = Offset.Zero, end = Offset.Infinite))
     ) {
+        if (manga.coverUrl.isNotBlank()) {
+            AsyncImage(
+                model = manga.coverUrl,
+                contentDescription = manga.title,
+                modifier = Modifier.matchParentSize(),
+                contentScale = androidx.compose.ui.layout.ContentScale.Crop
+            )
+        }
         // subtle texture overlay
         Box(
             Modifier.matchParentSize().background(
@@ -341,7 +360,7 @@ private fun MangalekCatalogSource(onCatalog: (List<Manga>) -> Unit) {
                             val json = JSONArray(raw)
                             (0 until json.length()).map { index ->
                                 val item = json.getJSONObject(index)
-                                Manga(item.optString("title"), item.optDouble("score", 0.0).toFloat(), item.optInt("chapters", 0), listOf(Color(0xFF243B55), Color(0xFF141E30)))
+                                Manga(item.optString("title"), item.optDouble("score", 0.0).toFloat(), item.optInt("chapters", 0), listOf(Color(0xFF243B55), Color(0xFF141E30)), item.optString("image"), item.optString("url"))
                             }
                         }.getOrDefault(emptyList())
                         Handler(Looper.getMainLooper()).post { onCatalog(parsed) }
@@ -353,13 +372,14 @@ private fun MangalekCatalogSource(onCatalog: (List<Manga>) -> Unit) {
                           const seen = new Set(), out = [];
                           document.querySelectorAll('a[href*="/manga/"]').forEach(function(a) {
                             const title = (a.innerText || a.getAttribute('title') || '').trim();
-                            const card = a.closest('.page-item-detail, .c-tabs-item__content, .row, article, .item-summary') || a.parentElement;
+                            const card = a.closest('.page-item-detail, .c-tabs-item__content, article, .row');
                             const text = (card ? card.innerText : '').trim();
-                            if (!title || seen.has(title)) return;
+                            if (!card || !title || seen.has(title) || !card.querySelector('img')) return;
                             seen.add(title);
                             const score = text.match(/([0-9]+(?:\\.[0-9]+)?)/);
                             const chapters = text.match(/(?:chapter|فصل)\\s*([0-9]+)/i);
-                            out.push({title:title, score:score ? parseFloat(score[1]) : 0, chapters:chapters ? parseInt(chapters[1]) : 0});
+                            const image = card ? card.querySelector('img') : null;
+                            out.push({title:title, url:a.href, score:score ? parseFloat(score[1]) : 0, chapters:chapters ? parseInt(chapters[1]) : 0, image:image ? (image.getAttribute('data-src') || image.getAttribute('data-lazy-src') || image.currentSrc || image.src || '') : ''});
                           });
                           return JSON.stringify(out.slice(0, 60));
                         })();""".trimIndent()) { raw ->
@@ -872,7 +892,7 @@ private const val MANGALEK_READER_SCRIPT = """
 """
 
 @Composable
-private fun MangalekCloudflareGate(onVerified: () -> Unit) {
+private fun MangalekCloudflareGate(url: String, onVerified: () -> Unit) {
     Box(Modifier.fillMaxSize().background(Color.Black.copy(.94f)).padding(18.dp), contentAlignment = Alignment.Center) {
         Surface(color = Surface2, shape = RoundedCornerShape(18.dp), shadowElevation = 18.dp, modifier = Modifier.fillMaxWidth().fillMaxHeight(.82f)) {
             Column(Modifier.fillMaxSize()) {
@@ -901,7 +921,7 @@ private fun MangalekCloudflareGate(onVerified: () -> Unit) {
                                     view.postDelayed({ checkChallenge(view) }, 500)
                                 }
                             }
-                            loadUrl("https://mangalik.net/")
+                            loadUrl(url.ifBlank { "https://mangalik.net/" })
                         }
                     }
                 )
