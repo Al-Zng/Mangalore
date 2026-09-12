@@ -2,11 +2,13 @@ package com.mangalore.app
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
 import androidx.compose.foundation.lazy.grid.*
@@ -22,7 +24,10 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.*
 import androidx.compose.ui.unit.*
@@ -46,6 +51,14 @@ private val Silver   = Color(0xFFB0B8C8)
 private val Bronze   = Color(0xFFC8895A)
 private val Red      = Color(0xFFE05050)
 private val Green    = Color(0xFF4CAF82)
+
+private val ReadexPro = FontFamily(
+    Font(R.font.readex_pro_light, FontWeight.Light),
+    Font(R.font.readex_pro_regular, FontWeight.Normal),
+    Font(R.font.readex_pro_medium, FontWeight.Medium),
+    Font(R.font.readex_pro_semibold, FontWeight.SemiBold),
+    Font(R.font.readex_pro_bold, FontWeight.Bold),
+)
 
 // 18 theme accent colors
 private val ThemeColors = listOf(
@@ -105,7 +118,7 @@ private val SampleComments = listOf(
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { MangamelloApp() }
+        setContent { MangaloreApp() }
     }
 }
 
@@ -113,7 +126,7 @@ class MainActivity : ComponentActivity() {
 // ROOT
 // ─────────────────────────────────────────────────────────────
 @Composable
-private fun MangamelloApp() {
+private fun MangaloreApp() {
     var themeAccent by remember { mutableStateOf(Accent) }
     var amoled      by remember { mutableStateOf(false) }
     val bg          = if (amoled) Black else Surface1
@@ -123,12 +136,36 @@ private fun MangamelloApp() {
     var picked  by remember { mutableStateOf<Manga?>(null) }
     var reading by remember { mutableStateOf<Manga?>(null) }
 
-    MaterialTheme(
-        colorScheme = darkColorScheme(background = bg, surface = Surface2, primary = themeAccent)
-    ) {
-        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
-            Box(Modifier.fillMaxSize().background(bg)) {
+    BackHandler(enabled = drawer || reading != null || picked != null || screen != "home") {
+        when {
+            drawer -> drawer = false
+            reading != null -> reading = null
+            picked != null -> picked = null
+            else -> screen = "home"
+        }
+    }
 
+    val language = LocalConfiguration.current.locales[0].language
+    val layoutDirection = if (language in setOf("ar", "fa", "he", "ur")) {
+        LayoutDirection.Rtl
+    } else {
+        LayoutDirection.Ltr
+    }
+
+    MaterialTheme(
+        colorScheme = darkColorScheme(background = bg, surface = Surface2, primary = themeAccent),
+        typography = Typography(defaultFontFamily = ReadexPro)
+    ) {
+        CompositionLocalProvider(LocalLayoutDirection provides layoutDirection) {
+            Box(Modifier.fillMaxSize().background(bg)) {
+                AnimatedContent(
+                    targetState = Triple(screen, picked?.title, reading?.title),
+                    transitionSpec = {
+                        (fadeIn(tween(220)) + slideInHorizontally { it / 12 }) togetherWith
+                            (fadeOut(tween(140)) + slideOutHorizontally { -it / 12 })
+                    },
+                    label = "screen_transition"
+                ) {
                 when {
                     reading != null ->
                         ReaderScreen(reading!!, onBack = { reading = null })
@@ -175,7 +212,12 @@ private fun MangamelloApp() {
                 }
 
                 // Drawer overlay
-                if (drawer) {
+                AnimatedVisibility(
+                    visible = drawer,
+                    enter = fadeIn(tween(160)) + slideInHorizontally(initialOffsetX = { -it / 2 }),
+                    exit = fadeOut(tween(120)) + slideOutHorizontally(targetOffsetX = { -it / 2 }),
+                    label = "navigation_drawer"
+                ) {
                     NavigationDrawer(
                         accent     = themeAccent,
                         onClose    = { drawer = false },
@@ -212,7 +254,7 @@ private fun TopBar(
     ) {
         if (onBack != null) {
             IconButton(onBack) {
-                Icon(Icons.Default.ArrowForward, "رجوع", tint = TextPri)
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, "رجوع", tint = TextPri)
             }
         }
         Text(
@@ -290,13 +332,7 @@ private fun HomeScreen(accent: Color, onMenu: () -> Unit, onSearch: () -> Unit, 
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 IconButton(onMenu) { Icon(Icons.Default.Menu, "القائمة", tint = TextPri) }
-                // Logo M
-                Box(
-                    Modifier.size(34.dp).clip(RoundedCornerShape(9.dp)).background(accent),
-                    contentAlignment = Alignment.Center
-                ) { Text("M", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 18.sp) }
-                Spacer(Modifier.width(8.dp))
-                Text("مانجاميلو", color = TextPri, fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                Text("Mangalore", color = TextPri, fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                 IconButton(onSearch) { Icon(Icons.Default.Search, "بحث", tint = TextPri) }
                 IconButton({}) {
                     BadgedBox(badge = { Badge(containerColor = accent) { Text("3") } }) {
@@ -403,7 +439,15 @@ private fun HomeScreen(accent: Color, onMenu: () -> Unit, onSearch: () -> Unit, 
 
 @Composable
 private fun MangaCardSmall(manga: Manga, accent: Color, onClick: () -> Unit) {
-    Column(Modifier.clickable(onClick = onClick)) {
+    val interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(if (pressed) 0.97f else 1f, label = "card_press")
+    Column(
+        Modifier
+            .graphicsLayer { scaleX = scale; scaleY = scale }
+            .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
+            .animateContentSize()
+    ) {
         CoverBox(manga, Modifier.fillMaxWidth().height(180.dp))
         Spacer(Modifier.height(6.dp))
         Text(manga.title, color = TextPri, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = 16.sp)
@@ -447,7 +491,7 @@ private fun DetailScreen(manga: Manga, accent: Color, onBack: () -> Unit, onRead
                 )
                 // Back button
                 IconButton(onBack, modifier = Modifier.align(Alignment.TopStart).statusBarsPadding()) {
-                    Icon(Icons.Default.ArrowForward, "رجوع", tint = Color.White)
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, "رجوع", tint = Color.White)
                 }
 
                 // Cover card + info
@@ -721,7 +765,7 @@ private fun ReaderScreen(manga: Manga, onBack: () -> Unit) {
                     Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(onBack) { Icon(Icons.Default.ArrowForward, "رجوع", tint = TextPri) }
+                    IconButton(onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "رجوع", tint = TextPri) }
                     Column(Modifier.weight(1f)) {
                         Text(manga.title, color = TextPri, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text("الفصل $currentChapter", color = TextSec, fontSize = 12.sp)

@@ -26,6 +26,24 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
+      - name: Download Readex Pro fonts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p app/src/main/res/font
+          declare -A fonts=(
+            [readex_pro_light.ttf]=ReadexPro-Light.ttf
+            [readex_pro_regular.ttf]=ReadexPro-Regular.ttf
+            [readex_pro_medium.ttf]=ReadexPro-Medium.ttf
+            [readex_pro_semibold.ttf]=ReadexPro-SemiBold.ttf
+            [readex_pro_bold.ttf]=ReadexPro-bold.ttf
+          )
+          for output in "${!fonts[@]}"; do
+            curl --fail --location --retry 3 \
+              "https://raw.githubusercontent.com/ThomasJockin/readexpro/master/fonts/ttf/${fonts[$output]}" \
+              --output "app/src/main/res/font/$output"
+          done
+
       - name: Cache Gradle dependencies
         uses: actions/cache@v4
         with:
