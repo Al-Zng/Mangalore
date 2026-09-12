@@ -85,7 +85,11 @@ private data class Manga(
     val description: String = ""
 )
 
-private val Mangas = mutableStateListOf<Manga>()
+private val Mangas = mutableStateListOf(
+    Manga("The World's Best Engineer", 4.8f, 190, listOf(Color(0xFF24476B), Color(0xFF6E9CC8)), listOf("أكشن", "خيال", "كوميديا"), "مستمر", "كوري", "1.2M", "مهندس عبقري يجد نفسه في عالم آخر، ويحاول استخدام معرفته لبناء مستقبل أفضل.") ,
+    Manga("Solo Leveling", 4.7f, 179, listOf(Color(0xFF171B35), Color(0xFF6C4B8E)), listOf("أكشن", "خيال", "إثارة"), "مكتمل", "كوري", "980K", "أضعف صياد في العالم يحصل على فرصة لتغيير مصيره.") ,
+    Manga("The Beginning After the End", 4.6f, 224, listOf(Color(0xFF3E2930), Color(0xFFB27765)), listOf("دراما", "خيال", "مغامرة"), "مستمر", "كوري", "760K", "ملك متوفى يولد من جديد في عالم مليء بالسحر والمخاطر.")
+)
 
 // ─────────────────────────────────────────────────────────────
 // APP ENTRY
