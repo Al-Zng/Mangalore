@@ -91,21 +91,7 @@ private data class Manga(
     val description: String = "تدور أحداث هذه القصة في عالم مليء بالأسرار والمواجهات المصيرية. تابع أحدث الفصول واستمتع بتجربة قراءة مريحة ومخصصة بالكامل."
 )
 
-private val Mangas = listOf(
-    Manga("Back to Spring", 9.28f, 82,  listOf(Color(0xFF9ACDDD), Color(0xFF18405A)), listOf("رومانسية", "خيال")),
-    Manga("I Became the Daughter of a Million-Dollar Actor", 8.82f, 64, listOf(Color(0xFFE8A7B7), Color(0xFF3A1C30)), listOf("دراما", "رومانسية")),
-    Manga("Bad Born Blood", 9.02f, 99, listOf(Color(0xFF152F4A), Color(0xFFB34035)), listOf("أكشن", "غموض")),
-    Manga("Revenge of the Iron-Blooded Sword Hound", 9.11f, 78, listOf(Color(0xFF5B1E29), Color(0xFFE8A04B)), listOf("أكشن", "خيال")),
-    Manga("Nano Machine", 9.40f, 245, listOf(Color(0xFF152B38), Color(0xFF7BBDD0)), listOf("أكشن", "خيال علمي")),
-    Manga("Magic Emperor", 9.16f, 620, listOf(Color(0xFF372066), Color(0xFFAC4FDC)), listOf("خيال", "سحر")),
-    Manga("Murim's Youngest Miracle", 9.43f, 87, listOf(Color(0xFF4A291E), Color(0xFFF1B76E)), listOf("فنون قتالية")),
-    Manga("Becoming a Legendary Ace Employee", 9.12f, 56, listOf(Color(0xFF244D92), Color(0xFFB2D3ED)), listOf("كوميديا", "دراما")),
-    Manga("Solo Leveling", 9.55f, 202, listOf(Color(0xFF161B3B), Color(0xFF6E54C8)), listOf("أكشن", "خيال")),
-    Manga("Logging 10,000 Years into the Future", 8.98f, 135, listOf(Color(0xFF173A4A), Color(0xFF52A5B8)), listOf("خيال علمي")),
-    Manga("Death Is the Only Ending for the Villainess", 9.31f, 145, listOf(Color(0xFF8D3155), Color(0xFFEDB4BD)), listOf("رومانسية", "دراما")),
-    Manga("I Became the Tyrant's Time-Limited Wife", 8.87f, 71, listOf(Color(0xFF4D2948), Color(0xFFDB789B)), listOf("رومانسية", "إثارة")),
-)
-
+private val Mangas = emptyList<Manga>()
 private data class Comment(
     val user: String, val text: String, val likes: Int,
     val rank: Int // 1=ذهبي 2=فضي 3=برونزي 0=عادي
@@ -164,93 +150,9 @@ private fun MangaloreApp() {
             LocalTextStyle provides LocalTextStyle.current.copy(fontFamily = ReadexPro)
         ) {
             Box(Modifier.fillMaxSize().background(bg)) {
-                AnimatedContent(
-                    targetState = Triple(screen, picked?.title, reading?.title),
-                    transitionSpec = {
-                        (fadeIn(tween(220)) + slideInHorizontally { -it / 12 }) togetherWith
-                            fadeOut(tween(140))
-                    },
-                    label = "manga_screen_entrance"
-                ) { _ ->
-                when {
-                    reading != null ->
-                        MangalekReader(
-                            manga = reading!!,
-                            onBack = { reading = null }
-                        )
-
-                    picked != null ->
-                        DetailScreen(
-                            picked!!,
-                            accent    = themeAccent,
-                            onBack    = { picked = null },
-                            onRead    = { reading = picked }
-                        )
-
-                    screen == "search"  -> SearchScreen(
-                        accent  = themeAccent,
-                        onBack  = { screen = "home" },
-                        onPick  = { picked = it }
-                    )
-                    screen == "library" -> LibraryScreen(
-                        accent  = themeAccent,
-                        onBack  = { screen = "home" },
-                        onPick  = { picked = it }
-                    )
-                    screen == "history" -> HistoryScreen(
-                        accent  = themeAccent,
-                        onBack  = { screen = "home" }
-                    )
-                    screen == "profile" -> ProfileScreen(
-                        accent  = themeAccent,
-                        onBack  = { screen = "home" }
-                    )
-                    screen == "settings" -> SettingsScreen(
-                        accent       = themeAccent,
-                        amoled       = amoled,
-                        onAmoled     = { amoled = it },
-                        onAccentPick = { themeAccent = it },
-                        onBack       = { screen = "home" }
-                    )
-                    else -> HomeScreen(
-                        accent   = themeAccent,
-                        onMenu   = { drawer = true },
-                        onSearch = { screen = "search" },
-                        onPick   = { picked = it }
-                    )
-                }
-                }
-
-                // Drawer overlay
-                AnimatedVisibility(
-                    visible = drawer,
-                    enter = fadeIn(tween(180)) + slideInHorizontally(
-                        initialOffsetX = { if (layoutDirection == LayoutDirection.Rtl) -it else it }
-                    ),
-                    exit = fadeOut(tween(140)) + slideOutHorizontally(
-                        targetOffsetX = { if (layoutDirection == LayoutDirection.Rtl) -it else it }
-                    ),
-                    label = "navigation_drawer"
-                ) {
-                    NavigationDrawer(
-                        accent     = themeAccent,
-                        onClose    = { drawer = false },
-                        onNavigate = { dest ->
-                            drawer = false
-                            when (dest) {
-                                "home"     -> { screen = "home"; picked = null; reading = null }
-                                "search"   -> screen = "search"
-                                "library"  -> screen = "library"
-                                "history"  -> screen = "history"
-                                "profile"  -> screen = "profile"
-                                "settings" -> screen = "settings"
-                            }
-                        }
-                    )
-                }
-
+                MangalekBrowser()
                 if (showMangalekGate) {
-                    MangalekCloudflareGate(onContinue = { showMangalekGate = false })
+                    MangalekCloudflareGate(onVerified = { showMangalekGate = false })
                 }
             }
         }
@@ -832,12 +734,12 @@ private const val MANGALEK_READER_SCRIPT = """
 """
 
 @Composable
-private fun MangalekCloudflareGate(onContinue: () -> Unit) {
-    Box(Modifier.fillMaxSize().background(Color.Black.copy(.92f)).padding(18.dp), contentAlignment = Alignment.Center) {
+private fun MangalekCloudflareGate(onVerified: () -> Unit) {
+    Box(Modifier.fillMaxSize().background(Color.Black.copy(.94f)).padding(18.dp), contentAlignment = Alignment.Center) {
         Surface(color = Surface2, shape = RoundedCornerShape(18.dp), shadowElevation = 18.dp, modifier = Modifier.fillMaxWidth().fillMaxHeight(.82f)) {
             Column(Modifier.fillMaxSize()) {
                 Text("التحقق من MangaLek", color = TextPri, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp))
-                Text("أكمل تحدي Cloudflare يدويًا داخل النافذة، ثم اضغط متابعة. التطبيق لا يتجاوز التحدي آليًا.", color = TextSec, fontSize = 12.sp, lineHeight = 19.sp, modifier = Modifier.padding(horizontal = 18.dp))
+                Text("أكمل تحدي Cloudflare يدويًا. ستُغلق هذه النافذة تلقائيًا فور نجاح التحقق.", color = TextSec, fontSize = 12.sp, lineHeight = 19.sp, modifier = Modifier.padding(horizontal = 18.dp))
                 AndroidView(
                     modifier = Modifier.weight(1f).fillMaxWidth().padding(top = 10.dp),
                     factory = { context ->
@@ -848,17 +750,51 @@ private fun MangalekCloudflareGate(onContinue: () -> Unit) {
                             settings.domStorageEnabled = true
                             settings.loadsImagesAutomatically = true
                             settings.userAgentString = "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36"
-                            webViewClient = WebViewClient()
+                            webViewClient = object : WebViewClient() {
+                                private fun checkChallenge(view: WebView) {
+                                    view.evaluateJavascript("(function(){return document.title+'|'+location.href+'|'+(document.body?document.body.innerText.slice(0,180):'')})()") { raw ->
+                                        val state = raw.orEmpty().lowercase()
+                                        val waiting = state.contains("just a moment") || state.contains("checking your browser") || state.contains("verify you are human") || state.contains("cf-chl")
+                                        if (!waiting && (state.contains("mangalik") || state.contains("mangalek"))) onVerified()
+                                        else view.postDelayed({ checkChallenge(view) }, 700)
+                                    }
+                                }
+                                override fun onPageFinished(view: WebView, url: String) {
+                                    view.postDelayed({ checkChallenge(view) }, 500)
+                                }
+                            }
                             loadUrl("https://mangalik.net/")
                         }
                     }
                 )
-                Button(onClick = onContinue, modifier = Modifier.fillMaxWidth().padding(14.dp), shape = RoundedCornerShape(12.dp)) {
-                    Text("تم التحقق — متابعة", fontFamily = ReadexPro)
-                }
             }
         }
     }
+}
+
+@Composable
+private fun MangalekBrowser() {
+    AndroidView(
+        modifier = Modifier.fillMaxSize(),
+        factory = { context ->
+            WebView(context).apply {
+                CookieManager.getInstance().setAcceptCookie(true)
+                CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
+                settings.javaScriptEnabled = true
+                settings.domStorageEnabled = true
+                settings.loadsImagesAutomatically = true
+                settings.useWideViewPort = true
+                settings.loadWithOverviewMode = true
+                settings.userAgentString = "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36"
+                webViewClient = object : WebViewClient() {
+                    override fun onPageFinished(view: WebView, url: String) {
+                        view.evaluateJavascript("""(function(){ if (document.querySelector('.reading-content')) { $MANGALEK_READER_SCRIPT; } })();""", null)
+                    }
+                }
+                loadUrl("https://mangalik.net/")
+            }
+        }
+    )
 }
 
 @Composable
