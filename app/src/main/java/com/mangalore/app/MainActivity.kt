@@ -150,7 +150,83 @@ private fun MangaloreApp() {
             LocalTextStyle provides LocalTextStyle.current.copy(fontFamily = ReadexPro)
         ) {
             Box(Modifier.fillMaxSize().background(bg)) {
-                MangalekBrowser()
+                AnimatedContent(
+                    targetState = Triple(screen, picked?.title, reading?.title),
+                    transitionSpec = {
+                        (fadeIn(tween(220)) + slideInHorizontally { -it / 12 }) togetherWith
+                            fadeOut(tween(140))
+                    },
+                    label = "manga_screen_entrance"
+                ) { _ ->
+                    when {
+                        reading != null -> MangalekReader(reading!!, onBack = { reading = null })
+                        picked != null -> DetailScreen(
+                            picked!!,
+                            accent = themeAccent,
+                            onBack = { picked = null },
+                            onRead = { reading = picked }
+                        )
+                        screen == "search" -> SearchScreen(
+                            accent = themeAccent,
+                            onBack = { screen = "home" },
+                            onPick = { picked = it }
+                        )
+                        screen == "library" -> LibraryScreen(
+                            accent = themeAccent,
+                            onBack = { screen = "home" },
+                            onPick = { picked = it }
+                        )
+                        screen == "history" -> HistoryScreen(
+                            accent = themeAccent,
+                            onBack = { screen = "home" }
+                        )
+                        screen == "profile" -> ProfileScreen(
+                            accent = themeAccent,
+                            onBack = { screen = "home" }
+                        )
+                        screen == "settings" -> SettingsScreen(
+                            accent = themeAccent,
+                            amoled = amoled,
+                            onAmoled = { amoled = it },
+                            onAccentPick = { themeAccent = it },
+                            onBack = { screen = "home" }
+                        )
+                        else -> HomeScreen(
+                            accent = themeAccent,
+                            onMenu = { drawer = true },
+                            onSearch = { screen = "search" },
+                            onPick = { picked = it }
+                        )
+                    }
+                }
+
+                AnimatedVisibility(
+                    visible = drawer,
+                    enter = fadeIn(tween(180)) + slideInHorizontally(
+                        initialOffsetX = { if (layoutDirection == LayoutDirection.Rtl) -it else it }
+                    ),
+                    exit = fadeOut(tween(140)) + slideOutHorizontally(
+                        targetOffsetX = { if (layoutDirection == LayoutDirection.Rtl) -it else it }
+                    ),
+                    label = "navigation_drawer"
+                ) {
+                    NavigationDrawer(
+                        accent = themeAccent,
+                        onClose = { drawer = false },
+                        onNavigate = { dest ->
+                            drawer = false
+                            when (dest) {
+                                "home" -> { screen = "home"; picked = null; reading = null }
+                                "search" -> screen = "search"
+                                "library" -> screen = "library"
+                                "history" -> screen = "history"
+                                "profile" -> screen = "profile"
+                                "settings" -> screen = "settings"
+                            }
+                        }
+                    )
+                }
+
                 if (showMangalekGate) {
                     MangalekCloudflareGate(onVerified = { showMangalekGate = false })
                 }
