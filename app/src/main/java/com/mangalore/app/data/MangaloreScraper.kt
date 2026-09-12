@@ -115,7 +115,7 @@ class MangaloreScraper(
                     .header("User-Agent", currentUserAgent).build()
                 client.newCall(request).execute().use { response ->
                     val body = response.body?.string().orEmpty()
-    private fun looksLikeChallenge(body: String): Boolean = Regex("""(?i)(cf-chl-|challenge-platform|turnstile|just a moment\.\.\.)""").containsMatchIn(body)
+                    if (response.code == 403 || looksLikeChallenge(body)) {
                         val solved = challengeHandler.requestChallenge(ChallengeRequest(request.url.toString(), currentUserAgent, "Protected page"))
                         if (solved != null) {
                             solved.cookieHeader?.let { cookieJar.importHeader(request.url, it) }
