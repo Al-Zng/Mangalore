@@ -21,9 +21,9 @@ android {
             val storeFilePath = System.getenv("ANDROID_KEYSTORE_PATH")
             if (!storeFilePath.isNullOrBlank()) {
                 storeFile = file(storeFilePath)
-                storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
-                keyAlias = System.getenv("ANDROID_KEY_ALIAS")
-                keyPassword = System.getenv("ANDROID_KEY_PASSWORD")
+                storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")?.trim()
+                keyAlias = System.getenv("ANDROID_KEY_ALIAS")?.trim()
+                keyPassword = System.getenv("ANDROID_KEY_PASSWORD")?.trim()
             }
         }
     }
