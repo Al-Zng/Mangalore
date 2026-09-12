@@ -17,6 +17,7 @@ object LocalizationManager {
     private lateinit var prefs: android.content.SharedPreferences
 
     var language: AppLanguage by mutableStateOf(AppLanguage.EN)
+        private set
 
     fun init(context: Context) {
         prefs = context.getSharedPreferences("mangalore_locale", Context.MODE_PRIVATE)
