@@ -89,6 +89,7 @@ class MangaloreScraper(
         .readTimeout(25, TimeUnit.SECONDS)
         .build()
     private val cacheDir = File(context.cacheDir, "mangalore-html")
+    @Volatile private var currentUserAgent: String = USER_AGENT
 
     suspend fun search(query: String, page: Int = 1): List<MangaSummary> =
         fetchHtml("/?s=${query.trim().replace(" ", "+")}&post_type=wp-manga", page)
@@ -111,13 +112,14 @@ class MangaloreScraper(
         repeat(3) { attempt ->
             try {
                 val request = Request.Builder().url(baseUrl.trimEnd('/') + path)
-                    .header("User-Agent", USER_AGENT).build()
+                    .header("User-Agent", currentUserAgent).build()
                 client.newCall(request).execute().use { response ->
                     val body = response.body?.string().orEmpty()
                     if (response.code == 403 || looksLikeChallenge(body)) {
-                        val solved = challengeHandler.requestChallenge(ChallengeRequest(request.url.toString(), USER_AGENT, "Protected page"))
+                        val solved = challengeHandler.requestChallenge(ChallengeRequest(request.url.toString(), currentUserAgent, "Protected page"))
                         if (solved != null) {
                             solved.cookieHeader?.let { cookieJar.importHeader(request.url, it) }
+                            solved.userAgent?.takeIf { it.isNotBlank() }?.let { currentUserAgent = it }
                             throw RetryRequest()
                         }
                         throw ChallengeRequiredException(request.url.toString())

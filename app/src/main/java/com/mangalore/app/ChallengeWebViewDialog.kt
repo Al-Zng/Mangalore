@@ -25,6 +25,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 fun ChallengeWebViewDialog(
     visible: Boolean,
     challengeUrl: String,
+    userAgent: String,
     onSolved: (cookieHeader: String?) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -39,7 +40,7 @@ fun ChallengeWebViewDialog(
                     WebView(context).apply {
                         settings.javaScriptEnabled = true
                         settings.domStorageEnabled = true
-                        settings.userAgentString = "Mangalore/1.0 (Android)"
+                        settings.userAgentString = userAgent
                         webViewClient = object : WebViewClient() {
                             override fun onPageFinished(view: WebView, url: String) {
                                 // A completed challenge normally sets cf_clearance. We pass the

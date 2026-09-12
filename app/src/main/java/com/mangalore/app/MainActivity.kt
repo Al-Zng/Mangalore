@@ -1,6 +1,7 @@
 package com.mangalore.app
 
 import android.os.Bundle
+import android.webkit.CookieManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -25,12 +26,17 @@ import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.*
 import androidx.compose.ui.unit.*
+import androidx.compose.ui.window.DialogProperties
+import coil.compose.AsyncImage
+import com.mangalore.app.data.*
+import kotlinx.coroutines.launch
 
 // ─────────────────────────────────────────────────────────────
 // DESIGN TOKENS — Mangamello palette
@@ -82,7 +88,9 @@ private data class Manga(
     val status: String = "",
     val origin: String = "",
     val views: String = "",
-    val description: String = ""
+    val description: String = "",
+    val coverUrl: String? = null,
+    val url: String = ""
 )
 
 private val Mangas = mutableStateListOf(
@@ -106,13 +114,38 @@ class MainActivity : ComponentActivity() {
 // ─────────────────────────────────────────────────────────────
 @Composable
 private fun MangaloreApp() {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var themeAccent by remember { mutableStateOf(Accent) }
     var amoled by remember { mutableStateOf(false) }
     val bg = if (amoled) Black else Surface1
     var screen by remember { mutableStateOf("home") }
     var drawer by remember { mutableStateOf(false) }
     var picked by remember { mutableStateOf<Manga?>(null) }
-    val catalog = Mangas
+    var catalog by remember { mutableStateOf(Mangas.toList()) }
+    var loading by remember { mutableStateOf(true) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var challenge by remember { mutableStateOf<ChallengeRequest?>(null) }
+    val challengeHandler = remember { ComposeChallengeHandler { challenge = it } }
+    val scraper = remember { MangaloreScraper(context, challengeHandler = challengeHandler) }
+
+    fun loadCatalog() {
+        scope.launch {
+            loading = true
+            error = null
+            runCatching { scraper.catalog() }
+                .onSuccess { remote ->
+                    if (remote.isNotEmpty()) catalog = remote.mapIndexed { index, item ->
+                        val colors = listOf(ThemeColors[index % ThemeColors.size], ThemeColors[(index + 1) % ThemeColors.size])
+                        Manga(item.title, item.score ?: 0f, item.latestChapter?.filter { it.isDigit() }?.toIntOrNull() ?: 0,
+                            colors, item.genres, item.status ?: "", "مانجا", "", "", item.coverUrl, item.url)
+                    }
+                }
+                .onFailure { error = "تعذر تحميل الكتالوج. تحقق من الاتصال ثم أعد المحاولة." }
+            loading = false
+        }
+    }
+    LaunchedEffect(Unit) { loadCatalog() }
 
     BackHandler(enabled = drawer || picked != null || screen != "home") {
         when {
@@ -128,27 +161,20 @@ private fun MangaloreApp() {
             LocalTextStyle provides LocalTextStyle.current.copy(fontFamily = ReadexPro)
         ) {
             Box(Modifier.fillMaxSize().background(bg)) {
-                AnimatedVisibility(
-                    visible = true,
-                    enter = fadeIn(tween(280)) + slideInHorizontally { -it / 12 },
-                    label = "manga_screen_entrance"
-                ) {
+                AnimatedContent(targetState = if (picked != null) "detail" else screen, label = "mangalore_screen_transition") { target ->
                     when {
-                        picked != null -> DetailScreen(picked!!, themeAccent, onBack = { picked = null })
-                        screen == "search" -> SearchScreen(themeAccent, onBack = { screen = "home" }, onPick = { picked = it })
-                        screen == "library" -> LibraryScreen(themeAccent, onBack = { screen = "home" }, onPick = { picked = it })
-                        screen == "history" -> HistoryScreen(themeAccent, onBack = { screen = "home" })
-                        screen == "profile" -> ProfileScreen(themeAccent, onBack = { screen = "home" })
-                        screen == "settings" -> SettingsScreen(themeAccent, amoled, { amoled = it }, { themeAccent = it }) { screen = "home" }
+                        target == "detail" && picked != null -> DetailScreen(picked!!, themeAccent, onBack = { picked = null }, scraper = scraper)
+                        target == "search" -> SearchScreen(themeAccent, scraper, onBack = { screen = "home" }, onPick = { picked = it })
+                        target == "library" -> LibraryScreen(themeAccent, onBack = { screen = "home" }, onPick = { picked = it })
+                        target == "history" -> HistoryScreen(themeAccent, onBack = { screen = "home" })
+                        target == "profile" -> ProfileScreen(themeAccent, onBack = { screen = "home" })
+                        target == "settings" -> SettingsScreen(themeAccent, amoled, { amoled = it }, { themeAccent = it }) { screen = "home" }
                         else -> HomeScreen(catalog, themeAccent, { drawer = true }, { screen = "search" }) { picked = it }
                     }
                 }
-                AnimatedVisibility(
-                    visible = drawer,
-                    enter = fadeIn(tween(180)) + slideInHorizontally { it },
-                    exit = fadeOut(tween(140)) + slideOutHorizontally { it },
-                    label = "navigation_drawer"
-                ) {
+                if (loading && picked == null && screen == "home") LoadingOverlay()
+                error?.let { message -> ErrorBanner(message, themeAccent, onRetry = { loadCatalog() }, onDismiss = { error = null }) }
+                AnimatedVisibility(visible = drawer, enter = fadeIn(tween(180)) + slideInHorizontally { it }, exit = fadeOut(tween(140)) + slideOutHorizontally { it }, label = "navigation_drawer") {
                     NavigationDrawer(themeAccent, { drawer = false }) { dest ->
                         drawer = false
                         when (dest) {
@@ -164,11 +190,35 @@ private fun MangaloreApp() {
             }
         }
     }
+    ChallengeWebViewDialog(visible = challenge != null, challengeUrl = challenge?.url.orEmpty(), userAgent = challenge?.userAgent ?: MangaloreScraper.USER_AGENT, onSolved = { cookies -> challengeHandler.resolve(cookies, challenge?.userAgent) }, onDismiss = { challengeHandler.cancel() })
 }
 
 // ─────────────────────────────────────────────────────────────
 // SHARED COMPONENTS
 // ─────────────────────────────────────────────────────────────
+@Composable
+private fun LoadingOverlay() {
+    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = .28f)), contentAlignment = Alignment.Center) {
+        Surface(color = Surface2, shape = RoundedCornerShape(16.dp)) {
+            Row(Modifier.padding(horizontal = 20.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                CircularProgressIndicator(color = Accent, modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
+                Text("جاري تحميل الأعمال…", color = TextPri, fontSize = 13.sp)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ErrorBanner(message: String, accent: Color, onRetry: () -> Unit, onDismiss: () -> Unit) {
+    Surface(color = Color(0xFF3A2024), shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth().padding(14.dp).statusBarsPadding()) {
+        Row(Modifier.padding(start = 14.dp, end = 6.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(message, color = TextPri, fontSize = 12.sp, modifier = Modifier.weight(1f))
+            TextButton(onClick = onRetry) { Text("إعادة", color = accent) }
+            IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, "إغلاق", tint = TextSec) }
+        }
+    }
+}
+
 @Composable
 private fun TopBar(
     title: String,
@@ -204,6 +254,9 @@ private fun CoverBox(
             .clip(RoundedCornerShape(12.dp))
             .background(Brush.linearGradient(manga.coverColors, start = Offset.Zero, end = Offset.Infinite))
     ) {
+        manga.coverUrl?.takeIf { it.isNotBlank() }?.let { url ->
+            AsyncImage(model = url, contentDescription = manga.title, modifier = Modifier.matchParentSize(), contentScale = ContentScale.Crop)
+        }
         // subtle texture overlay
         Box(
             Modifier.matchParentSize().background(
@@ -395,10 +448,20 @@ private fun MangaCardSmall(manga: Manga, accent: Color, onClick: () -> Unit) {
 // DETAIL SCREEN
 // ─────────────────────────────────────────────────────────────
 @Composable
-private fun DetailScreen(manga: Manga, accent: Color, onBack: () -> Unit) {
+private fun DetailScreen(manga: Manga, accent: Color, onBack: () -> Unit, scraper: MangaloreScraper) {
     var activeTab by remember { mutableStateOf(0) }
     var inLibrary by remember { mutableStateOf(false) }
     var userRating by remember { mutableStateOf(0) }
+    var details by remember { mutableStateOf<MangaDetails?>(null) }
+    var reader by remember { mutableStateOf<ReaderContent?>(null) }
+    var detailLoading by remember { mutableStateOf(manga.url.isNotBlank()) }
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(manga.url) {
+        if (manga.url.isNotBlank()) {
+            runCatching { scraper.details(manga.url) }.onSuccess { details = it }
+            detailLoading = false
+        }
+    }
 
     LazyColumn(Modifier.fillMaxSize()) {
         // ── Hero cover with gradient overlay
@@ -522,21 +585,27 @@ private fun DetailScreen(manga: Manga, accent: Color, onBack: () -> Unit) {
             // ── Description
             item {
                 Text(
-                    manga.description,
+                    details?.description?.ifBlank { manga.description } ?: manga.description,
                     color = TextSec, lineHeight = 24.sp, fontSize = 14.sp,
                     modifier = Modifier.padding(horizontal = 16.dp)
                 )
             }
         } else {
             // ── Chapters list
-            items(minOf(manga.chapters, 20)) { i ->
-                val chNum = manga.chapters - i
-                ChapterRow(chNum, accent)
+            val chapters = details?.chapters.orEmpty()
+            items(if (chapters.isEmpty()) minOf(manga.chapters, 20) else chapters.size) { i ->
+                if (chapters.isEmpty()) ChapterRow(manga.chapters - i, accent)
+                else ChapterRow(chapters[i].number?.toIntOrNull() ?: (chapters.size - i), accent) {
+                    scope.launch { runCatching { scraper.reader(chapters[i].url) }.onSuccess { reader = it } }
+                }
             }
         }
 
         item { Spacer(Modifier.height(40.dp)) }
     }
+
+    if (detailLoading) LoadingOverlay()
+    reader?.let { ReaderDialog(it, accent, onDismiss = { reader = null }) }
 }
 
 @Composable
@@ -552,9 +621,9 @@ private fun StatBox(value: String, label: String, icon: ImageVector, modifier: M
 }
 
 @Composable
-private fun ChapterRow(number: Int, accent: Color) {
+private fun ChapterRow(number: Int, accent: Color, onClick: () -> Unit = {}) {
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 13.dp),
+        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 13.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(Modifier.weight(1f)) {
@@ -568,13 +637,28 @@ private fun ChapterRow(number: Int, accent: Color) {
 // READER SCREEN
 // ─────────────────────────────────────────────────────────────
 @Composable
-private fun SearchScreen(accent: Color, onBack: () -> Unit, onPick: (Manga) -> Unit) {
+private fun SearchScreen(accent: Color, scraper: MangaloreScraper, onBack: () -> Unit, onPick: (Manga) -> Unit) {
     var query by remember { mutableStateOf("") }
+    var remoteResults by remember { mutableStateOf<List<Manga>?>(null) }
+    var searchLoading by remember { mutableStateOf(false) }
     val categories = listOf("خيال", "أكشن", "رومانسية", "غموض", "إثارة", "كوميديا", "دراما", "فنون قتالية", "خيال علمي")
     var activeCategory by remember { mutableStateOf<String?>(null) }
 
+    LaunchedEffect(query) {
+        if (query.trim().length >= 2) {
+            kotlinx.coroutines.delay(450)
+            searchLoading = true
+            runCatching { scraper.search(query) }.onSuccess { results ->
+                remoteResults = results.mapIndexed { index, item ->
+                    Manga(item.title, item.score ?: 0f, item.latestChapter?.filter { it.isDigit() }?.toIntOrNull() ?: 0,
+                        listOf(ThemeColors[index % ThemeColors.size], ThemeColors[(index + 1) % ThemeColors.size]), item.genres, item.status ?: "", "مانجا", "", "", item.coverUrl, item.url)
+                }
+            }
+            searchLoading = false
+        } else remoteResults = null
+    }
     val filtered = if (query.isBlank() && activeCategory == null) Mangas
-    else Mangas.filter {
+    else (remoteResults ?: Mangas).filter {
         (query.isBlank() || it.title.contains(query, ignoreCase = true)) &&
         (activeCategory == null || it.genre.contains(activeCategory))
     }
@@ -626,6 +710,7 @@ private fun SearchScreen(accent: Color, onBack: () -> Unit, onPick: (Manga) -> U
         }
 
         Spacer(Modifier.height(12.dp))
+        if (searchLoading) LinearProgressIndicator(color = accent, modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp))
         Text(
             if (query.isBlank() && activeCategory == null) "أعمال مقترحة" else "نتائج البحث (${filtered.size})",
             color = TextPri, fontSize = 17.sp, fontWeight = FontWeight.Bold,
@@ -657,6 +742,32 @@ private fun SearchScreen(accent: Color, onBack: () -> Unit, onPick: (Manga) -> U
 // ─────────────────────────────────────────────────────────────
 // LIBRARY SCREEN
 // ─────────────────────────────────────────────────────────────
+@Composable
+private fun ReaderDialog(content: ReaderContent, accent: Color, onDismiss: () -> Unit) {
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(Modifier.fillMaxSize(), color = Black) {
+            Box(Modifier.fillMaxSize()) {
+                LazyColumn(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
+                    item {
+                        Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 8.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, "إغلاق", tint = TextPri) }
+                            Text(content.title.ifBlank { "القارئ" }, color = TextPri, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                            Text("${content.pages.size} صفحة", color = accent, fontSize = 12.sp)
+                        }
+                    }
+                    items(content.pages, key = { it.index }) { page ->
+                        AsyncImage(model = page.imageUrl, contentDescription = "صفحة ${page.index + 1}", modifier = Modifier.fillMaxWidth().heightIn(min = 260.dp), contentScale = ContentScale.FillWidth)
+                    }
+                    item { Spacer(Modifier.navigationBarsPadding().height(24.dp)) }
+                }
+                if (content.pages.isEmpty()) {
+                    Text("تعذر العثور على صفحات هذا الفصل", color = TextSec, modifier = Modifier.align(Alignment.Center))
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun LibraryScreen(accent: Color, onBack: () -> Unit, onPick: (Manga) -> Unit) {
     Column(Modifier.fillMaxSize()) {

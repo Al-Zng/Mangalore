@@ -1,35 +1,35 @@
 # Mangalore
 
-تطبيق Android أصلي بـ Kotlin و Jetpack Compose مستوحى من واجهة Mangamello: واجهة عربية RTL داكنة، اكتشاف مانغا، تفاصيل الأعمال، الفصول، المكتبة، السجل، الملف الشخصي، الإعدادات، وقارئ تجريبي.
+تطبيق Android أصلي بـ Kotlin و Jetpack Compose بواجهة عربية RTL داكنة لاكتشاف المانجا وقراءة الفصول.
 
-## ما تم إصلاحه
+## التنفيذ الحالي
 
-- إضافة بيانات أولية واقعية حتى لا تبدأ واجهة المنزل والبحث بقائمة فارغة.
-- إضافة طبقة `MangaloreScraper` typed تستخرج القوائم، تفاصيل العمل، الفصول، وصفحات القارئ من بنية Madara المستخدمة في `mangalik.net`.
-- إضافة تخزين مؤقت للـ HTML داخل cache التطبيق، وملفات تعريف ارتباط مستمرة، وإعادة محاولة تدريجية للطلبات العابرة.
-- إضافة `ChallengeWebViewDialog` تفاعلي. لا يظهر عند تشغيل التطبيق أو عند فتح الصفحة الرئيسية؛ يظهر فقط عندما تكتشف طبقة الشبكة استجابة 403 أو مؤشرات Cloudflare/Turnstile. بعد إكمال التحقق، تُعاد كوكيز الجلسة إلى طبقة العميل.
-- إضافة صلاحية `INTERNET` واعتماديات OkHttp وJsoup وCoroutines.
+التطبيق متصل بطبقة `MangaloreScraper` التي تستخرج الكتالوج، البحث، تفاصيل العمل، الفصول، وصور صفحات القارئ من بنية Madara المستخدمة في `mangalik.net`. عند فتح التطبيق يتم تحميل الكتالوج الحي مع عرض بيانات احتياطية عند تعذر الاتصال، وتظهر حالات تحميل وإعادة محاولة وأخطاء واضحة للمستخدم.
 
-## التشغيل محليًا
+تستخدم الشاشة الرئيسية بيانات الشبكة الحية، ويستخدم البحث طلبًا مؤجلًا قصيرًا لتجنب الطلب مع كل ضغطة. تعرض شاشة العمل الوصف والفصول الحقيقية عند توفرها، ويمكن الضغط على الفصل لفتح قارئ عمودي يعرض كل صفحات الفصل بصور عالية الدقة مع عداد الصفحات وزر إغلاق مناسب للمساحات الصغيرة.
 
-افتح المشروع في Android Studio ثم شغّل `app` على جهاز Android أو محاكي. الحد الأدنى Android 8.0 (API 26).
+تتضمن طبقة الشبكة Cache محليًا لصفحات HTML، Cookies مستمرة للجلسة، وإعادة محاولة تدريجية للطلبات العابرة. كما يتم تمرير User-Agent وCookies الناتجة من التحقق إلى الطلبات اللاحقة.
 
-## بنية scraper
+## Cloudflare وTurnstile
 
-الملف `app/src/main/java/com/mangalore/app/data/MangaloreScraper.kt` هو نقطة الدخول:
+لا يتم فتح نافذة التحقق عند تشغيل التطبيق أو عند فتح الصفحة الرئيسية. عند اكتشاف HTTP 403 أو مؤشرات Cloudflare/Turnstile، تتوقف العملية وتظهر `ChallengeWebViewDialog` تفاعلية داخل التطبيق. بعد أن يكمل المستخدم التحقق، يعاد `cf_clearance` وUser-Agent إلى عميل OkHttp ثم يعاد الطلب الأصلي تلقائيًا. لا يوجد تجاوز آلي أو إخفاء للتحدي.
 
-- `search(query)` للبحث.
-- `catalog(page)` لقائمة الأعمال.
-- `details(url)` للبيانات الوصفية وقائمة الفصول.
-- `reader(url)` لمصفوفة صور الفصل.
+## الملفات الرئيسية
 
-`ChallengeHandler` مقصود كواجهة بين طبقة الشبكة وواجهة Compose؛ يمكن ربطه بحالة شاشة `ChallengeWebViewDialog` عند بناء تدفق التحميل الحقيقي.
+- `app/src/main/java/com/mangalore/app/MainActivity.kt`: واجهة Compose، تحميل الكتالوج والبحث والتفاصيل والقارئ وحالات التحميل والخطأ.
+- `app/src/main/java/com/mangalore/app/data/MangaloreScraper.kt`: النماذج، parser، الشبكة، cache، retry، والجلسة.
+- `app/src/main/java/com/mangalore/app/ComposeChallengeHandler.kt`: جسر تعليق الطلب حتى انتهاء التحقق التفاعلي.
+- `app/src/main/java/com/mangalore/app/ChallengeWebViewDialog.kt`: نافذة WebView الشرطية للتحقق.
+
+## التشغيل
+
+افتح المشروع في Android Studio ثم شغّل `app` على جهاز Android أو محاكي. الحد الأدنى Android 8.0 (API 26). يحتاج التطبيق إلى اتصال بالإنترنت عند تحميل البيانات الحية.
 
 ## البناء والنشر
 
-ملف `.github/workflows/main.yml` يبني APK إصدار Release موقّعًا عند دفع tag بصيغة `v*`، ثم يرفعه كأصل داخل GitHub Release. لا يستخدم workflow قسم Artifacts، ولا يرفع APK إلى أي مكان آخر.
+ملف `.github/workflows/main.yml` يبني APK إصدار Release موقّعًا عند دفع tag بصيغة `v*`، ثم يرفعه كأصل داخل GitHub Release.
 
-الأسرار المطلوبة في إعدادات GitHub Actions هي:
+الأسرار المطلوبة في إعدادات GitHub Actions:
 
 - `ANDROID_KEYSTORE_BASE64`
 - `ANDROID_KEYSTORE_PASSWORD`
@@ -42,5 +42,3 @@
 git tag v1.0.0
 git push origin v1.0.0
 ```
-
-سيتم إنشاء Release تلقائيًا وإرفاق `Mangalore-v1.0.0.apk` به.
