@@ -64,7 +64,7 @@ fun LanguageSelectionScreen(onFinished: () -> Unit) {
 
             Button(
                 onClick = {
-                    LocalizationManager.setLanguage(selected)
+                    LocalizationManager.updateLanguage(selected)
                     onFinished()
                 },
                 modifier = Modifier.fillMaxWidth().height(52.dp),

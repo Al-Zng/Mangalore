@@ -36,7 +36,7 @@ fun SettingsScreen() {
                         val selected = language == lang
                         FilterChip(
                             selected = selected,
-                            onClick = { language = lang; LocalizationManager.setLanguage(lang) },
+                            onClick = { language = lang; LocalizationManager.updateLanguage(lang) },
                             label = { Text(lang.displayName) },
                             colors = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = ZTheme.accent, selectedLabelColor = ZTheme.bg,

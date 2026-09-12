@@ -25,7 +25,7 @@ object LocalizationManager {
         language = saved?.let { code -> AppLanguage.values().firstOrNull { it.code == code } } ?: AppLanguage.EN
     }
 
-    fun setLanguage(lang: AppLanguage) {
+    fun updateLanguage(lang: AppLanguage) {
         language = lang
         if (::prefs.isInitialized) prefs.edit().putString("app_language", lang.code).apply()
     }
