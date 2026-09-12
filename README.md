@@ -1,27 +1,13 @@
 # Mangalore
 
-تطبيق Android أصلي بـ Kotlin و Jetpack Compose مستوحى من واجهة Mangamello: واجهة عربية RTL داكنة، اكتشاف مانغا، تفاصيل الأعمال، الفصول، المكتبة، السجل، الملف الشخصي، الإعدادات، وقارئ تجريبي.
+Mangalore is an Android manga reader built around the public LekManga web source.
 
-## التشغيل محليًا
+## Included
+- Live latest, popular, new-release and search catalogues
+- Manga details and chapter parsing
+- Cloudflare-aware WebView fallback
+- Reader with page loading and reading progress
+- Local library, history, downloads and cached metadata
+- Arabic/English onboarding and theme settings
 
-افتح المشروع في Android Studio ثم شغّل `app` على جهاز Android أو محاكي. الحد الأدنى Android 8.0 (API 26).
-
-## البناء والنشر
-
-ملف `.github/workflows/main.yml` يبني APK إصدار Release موقّعًا عند دفع tag بصيغة `v*`، ثم يرفعه كأصل داخل GitHub Release. لا يستخدم workflow قسم Artifacts، ولا يرفع APK إلى أي مكان آخر.
-
-الأسرار المطلوبة في إعدادات GitHub Actions هي:
-
-- `ANDROID_KEYSTORE_BASE64`
-- `ANDROID_KEYSTORE_PASSWORD`
-- `ANDROID_KEY_ALIAS`
-- `ANDROID_KEY_PASSWORD`
-
-لإنشاء إصدار جديد:
-
-```bash
-git tag v1.0.0
-git push origin v1.0.0
-```
-
-سيتم إنشاء Release تلقائيًا وإرفاق `Mangalore-v1.0.0.apk` به.
+This build intentionally contains no Mangaera Supabase credentials or private signing keys.
