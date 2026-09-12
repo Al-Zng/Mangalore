@@ -153,10 +153,12 @@ private fun MangaloreApp() {
     }
 
     MaterialTheme(
-        colorScheme = darkColorScheme(background = bg, surface = Surface2, primary = themeAccent),
-        typography = Typography(defaultFontFamily = ReadexPro)
+        colorScheme = darkColorScheme(background = bg, surface = Surface2, primary = themeAccent)
     ) {
-        CompositionLocalProvider(LocalLayoutDirection provides layoutDirection) {
+        CompositionLocalProvider(
+            LocalLayoutDirection provides layoutDirection,
+            LocalTextStyle provides LocalTextStyle.current.copy(fontFamily = ReadexPro)
+        ) {
             Box(Modifier.fillMaxSize().background(bg)) {
                 AnimatedContent(
                     targetState = Triple(screen, picked?.title, reading?.title),
@@ -255,7 +257,7 @@ private fun TopBar(
     ) {
         if (onBack != null) {
             IconButton(onBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, "رجوع", tint = TextPri)
+                Icon(if (LocalLayoutDirection.current == LayoutDirection.Rtl) Icons.Default.ArrowForward else Icons.Default.ArrowBack, "رجوع", tint = TextPri)
             }
         }
         Text(
@@ -492,7 +494,7 @@ private fun DetailScreen(manga: Manga, accent: Color, onBack: () -> Unit, onRead
                 )
                 // Back button
                 IconButton(onBack, modifier = Modifier.align(Alignment.TopStart).statusBarsPadding()) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, "رجوع", tint = Color.White)
+                    Icon(if (LocalLayoutDirection.current == LayoutDirection.Rtl) Icons.Default.ArrowForward else Icons.Default.ArrowBack, "رجوع", tint = Color.White)
                 }
 
                 // Cover card + info
@@ -766,7 +768,7 @@ private fun ReaderScreen(manga: Manga, onBack: () -> Unit) {
                     Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "رجوع", tint = TextPri) }
+                    IconButton(onBack) { Icon(if (LocalLayoutDirection.current == LayoutDirection.Rtl) Icons.Default.ArrowForward else Icons.Default.ArrowBack, "رجوع", tint = TextPri) }
                     Column(Modifier.weight(1f)) {
                         Text(manga.title, color = TextPri, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text("الفصل $currentChapter", color = TextSec, fontSize = 12.sp)
