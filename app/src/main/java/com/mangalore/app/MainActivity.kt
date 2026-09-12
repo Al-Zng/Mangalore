@@ -145,12 +145,9 @@ private fun MangaloreApp() {
         }
     }
 
-    val language = LocalConfiguration.current.locales[0].language
-    val layoutDirection = if (language in setOf("ar", "fa", "he", "ur")) {
-        LayoutDirection.Rtl
-    } else {
-        LayoutDirection.Ltr
-    }
+    // Mangalore is an Arabic-first interface: keep navigation, actions, and drawer
+    // direction consistent instead of mixing LTR controls into an RTL screen.
+    val layoutDirection = LayoutDirection.Rtl
 
     MaterialTheme(
         colorScheme = darkColorScheme(background = bg, surface = Surface2, primary = themeAccent)
@@ -160,6 +157,14 @@ private fun MangaloreApp() {
             LocalTextStyle provides LocalTextStyle.current.copy(fontFamily = ReadexPro)
         ) {
             Box(Modifier.fillMaxSize().background(bg)) {
+                AnimatedContent(
+                    targetState = Triple(screen, picked?.title, reading?.title),
+                    transitionSpec = {
+                        (fadeIn(tween(220)) + slideInHorizontally { -it / 12 }) togetherWith
+                            fadeOut(tween(140))
+                    },
+                    label = "manga_screen_entrance"
+                ) { _ ->
                 when {
                     reading != null ->
                         ReaderScreen(reading!!, onBack = { reading = null })
@@ -203,6 +208,7 @@ private fun MangaloreApp() {
                         onSearch = { screen = "search" },
                         onPick   = { picked = it }
                     )
+                }
                 }
 
                 // Drawer overlay
