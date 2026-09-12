@@ -41,7 +41,7 @@ object SupabaseSync {
     suspend fun toggleFavorite(mangaId: String, status: String, auth: SupabaseAuth) {}
     suspend fun removeFavorite(mangaId: String, auth: SupabaseAuth) {}
     suspend fun saveProgress(mangaId: String, chapterSlug: String, chapterNumber: String, pageIndex: Int, auth: SupabaseAuth) {}
-    suspend fun postComment(mangaId: String, rating: Int?, content: String, auth: SupabaseAuth) = throw SupabaseException.NotAuthenticated()
+    suspend fun postComment(mangaId: String, rating: Int?, content: String, auth: SupabaseAuth): SBComment = throw SupabaseException.NotAuthenticated()
     suspend fun fetchComments(mangaId: String, auth: SupabaseAuth): List<SBComment> = emptyList()
     suspend fun deleteComment(id: String, auth: SupabaseAuth) {}
     suspend fun sendMessage(receiverId: String, content: String?, sharedMangaId: String?, auth: SupabaseAuth) {}
