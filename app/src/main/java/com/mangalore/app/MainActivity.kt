@@ -96,7 +96,7 @@ private data class Manga(
 )
 
 // Catalog content comes from the MangaLek session, not hard-coded sample data.
-private val Mangas = emptyList<Manga>()
+private val Mangas = mutableStateListOf<Manga>()
 private data class Comment(
     val user: String, val text: String, val likes: Int,
     val rank: Int // 1=ذهبي 2=فضي 3=برونزي 0=عادي
@@ -134,7 +134,6 @@ private fun MangaloreApp() {
     var reading by remember { mutableStateOf<Manga?>(null) }
     var showMangalekGate by remember { mutableStateOf(true) }
     var showEntryAnimation by remember { mutableStateOf(false) }
-    val liveCatalog = remember { mutableStateListOf<Manga>() }
 
     LaunchedEffect(Unit) {
         showEntryAnimation = true
@@ -162,8 +161,8 @@ private fun MangaloreApp() {
         ) {
             Box(Modifier.fillMaxSize().background(bg)) {
                 MangalekCatalogSource { items ->
-                    liveCatalog.clear()
-                    liveCatalog.addAll(items)
+                    Mangas.clear()
+                    Mangas.addAll(items)
                 }
                 AnimatedVisibility(
                     visible = showEntryAnimation,
@@ -205,7 +204,7 @@ private fun MangaloreApp() {
                         )
                         else -> HomeScreen(
                             accent = themeAccent,
-                            catalog = liveCatalog,
+                            catalog = Mangas,
                             onMenu = { drawer = true },
                             onSearch = { screen = "search" },
                             onPick = { picked = it }
