@@ -210,6 +210,7 @@ private fun MangaloreApp() {
                         onPick   = { picked = it }
                     )
                 }
+                }
 
                 // Drawer overlay
                 AnimatedVisibility(
