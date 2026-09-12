@@ -1,4 +1,5 @@
 @file:Suppress("UNUSED_EXPRESSION")
+@file:OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 package com.mangalore.app
 
 import android.annotation.SuppressLint
@@ -295,10 +296,8 @@ private fun CfBypassDialog(onSolved: (String) -> Unit, onDismiss: () -> Unit) {
                                 builtInZoomControls = true
                                 displayZoomControls = false
                             }
-                            CookieManager.getInstance().apply {
-                                setAcceptCookie(true)
-                                setAcceptThirdPartyCookies(this@apply, true)
-                            }
+                            CookieManager.getInstance().setAcceptCookie(true)
+                            CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
                             webViewClient = object : WebViewClient() {
                                 override fun onPageStarted(v: WebView?, url: String?, fav: android.graphics.Bitmap?) {
                                     pageLoading = true
@@ -752,7 +751,7 @@ private fun DetailFullScreen(
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
                 listOf("التفاصيل", "الفصول (${detail.chapters.size})").forEachIndexed { i, lbl ->
                     val active = tab == i
-                    Column(Modifier.weight(1f).clickable { tab = i }, Alignment.CenterHorizontally) {
+                    Column(Modifier.weight(1f).clickable { tab = i }, horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(lbl, color = if (active) accent else TextSec, fontSize = 14.sp,
                             fontWeight = if (active) FontWeight.Bold else FontWeight.Normal)
                         Spacer(Modifier.height(5.dp))
@@ -804,7 +803,7 @@ private fun DetailFullScreen(
                     }
                     Icon(Icons.Default.ChevronLeft, null, tint = TextDim, modifier = Modifier.size(18.dp))
                 }
-                HorizontalDivider(Modifier.padding(horizontal = 16.dp), color = Border, .5.dp)
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = .5.dp, color = Border)
             }
         }
         item { Spacer(Modifier.height(48.dp)) }
@@ -845,7 +844,7 @@ private fun ReaderScreen(
                 }
             }
             cfNeed -> Box(Modifier.fillMaxSize(), Alignment.Center) {
-                Column(Modifier.padding(24.dp), Alignment.CenterHorizontally) {
+                Column(modifier = Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(Icons.Default.Shield, null, tint = accent, modifier = Modifier.size(56.dp))
                     Spacer(Modifier.height(16.dp))
                     Text("مطلوب تحقق الأمان", color = TextPri, fontSize = 17.sp, fontWeight = FontWeight.Bold)
@@ -1025,7 +1024,7 @@ private fun HistoryScreen(
                         }
                         Icon(Icons.Default.ChevronLeft, null, tint = TextDim, modifier = Modifier.size(18.dp))
                     }
-                    HorizontalDivider(Modifier.padding(horizontal = 14.dp), color = Border, .5.dp)
+                    HorizontalDivider(modifier = Modifier.padding(horizontal = 14.dp), thickness = .5.dp, color = Border)
                 }
             }
         }
