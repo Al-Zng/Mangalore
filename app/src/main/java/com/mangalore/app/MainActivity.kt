@@ -160,14 +160,6 @@ private fun MangaloreApp() {
             LocalTextStyle provides LocalTextStyle.current.copy(fontFamily = ReadexPro)
         ) {
             Box(Modifier.fillMaxSize().background(bg)) {
-                AnimatedContent(
-                    targetState = Triple(screen, picked?.title, reading?.title),
-                    transitionSpec = {
-                        (fadeIn(tween(220)) + slideInHorizontally { it / 12 }) togetherWith
-                            (fadeOut(tween(140)) + slideOutHorizontally { -it / 12 })
-                    },
-                    label = "screen_transition"
-                ) {
                 when {
                     reading != null ->
                         ReaderScreen(reading!!, onBack = { reading = null })
@@ -212,13 +204,16 @@ private fun MangaloreApp() {
                         onPick   = { picked = it }
                     )
                 }
-                }
 
                 // Drawer overlay
                 AnimatedVisibility(
                     visible = drawer,
-                    enter = fadeIn(tween(160)) + slideInHorizontally(initialOffsetX = { -it / 2 }),
-                    exit = fadeOut(tween(120)) + slideOutHorizontally(targetOffsetX = { -it / 2 }),
+                    enter = fadeIn(tween(180)) + slideInHorizontally(
+                        initialOffsetX = { if (layoutDirection == LayoutDirection.Rtl) -it else it }
+                    ),
+                    exit = fadeOut(tween(140)) + slideOutHorizontally(
+                        targetOffsetX = { if (layoutDirection == LayoutDirection.Rtl) -it else it }
+                    ),
                     label = "navigation_drawer"
                 ) {
                     NavigationDrawer(
@@ -567,7 +562,7 @@ private fun DetailScreen(manga: Manga, accent: Color, onBack: () -> Unit, onRead
                 ) {
                     Icon(Icons.Default.PlayArrow, null, tint = Color.White, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(6.dp))
-                    Text("ابدأ القراءة", color = Color.White, fontWeight = FontWeight.SemiBold)
+                    Text("ابدأ القراءة", color = Color.White, fontWeight = FontWeight.SemiBold, fontFamily = ReadexPro)
                 }
                 OutlinedButton(
                     onClick = { inLibrary = !inLibrary },
@@ -576,7 +571,7 @@ private fun DetailScreen(manga: Manga, accent: Color, onBack: () -> Unit, onRead
                     border = BorderStroke(1.dp, if (inLibrary) accent else Border),
                     modifier = Modifier.weight(1f).height(48.dp)
                 ) {
-                    Text(if (inLibrary) "في المكتبة ✓" else "أضف للمكتبة")
+                    Text(if (inLibrary) "في المكتبة ✓" else "أضف للمكتبة", fontFamily = ReadexPro)
                 }
             }
         }
@@ -1355,13 +1350,14 @@ private fun SettingsScreen(
 // ─────────────────────────────────────────────────────────────
 @Composable
 private fun NavigationDrawer(accent: Color, onClose: () -> Unit, onNavigate: (String) -> Unit) {
+    val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     Box(
         Modifier.fillMaxSize()
             .background(Color.Black.copy(.65f))
             .pointerInput(Unit) { detectTapGestures { onClose() } }
     ) {
         Surface(
-            Modifier.fillMaxHeight().width(320.dp).align(Alignment.CenterEnd)
+            Modifier.fillMaxHeight().width(320.dp).align(if (isRtl) Alignment.CenterStart else Alignment.CenterEnd)
                 .pointerInput(Unit) { detectTapGestures { /* absorb taps */ } },
             color = Surface1,
             shadowElevation = 24.dp
