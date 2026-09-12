@@ -123,6 +123,7 @@ private fun MangaloreApp() {
     var cfMsg   by remember { mutableStateOf("") }
 
     fun push(s: Screen) { stack = stack + s; drawer = false }
+    fun replace(s: Screen) { stack = stack.dropLast(1) + s; drawer = false }
     fun pop() { if (stack.size > 1) stack = stack.dropLast(1) }
 
     BackHandler(enabled = stack.size > 1 || drawer) {
@@ -158,7 +159,7 @@ private fun MangaloreApp() {
                         is Screen.History -> HistoryScreen(accent, history, ::pop, { push(Screen.Detail(it)) }) { history.clear() }
                         is Screen.Profile -> ProfileScreen(accent, ::pop)
                         is Screen.Settings -> SettingsScreen(accent, amoled, { amoled = it }, { accent = it }, ::pop)
-                        is Screen.Detail -> DetailLoadScreen(cur.item, accent, library, ::pop) { push(Screen.DetailFull(it)) }
+                        is Screen.Detail -> DetailLoadScreen(cur.item, accent, library, ::pop) { replace(Screen.DetailFull(it)) }
                         is Screen.DetailFull -> DetailFullScreen(
                             detail = cur.detail, accent = accent, library = library, onBack = ::pop
                         ) { ch ->
@@ -354,7 +355,11 @@ private fun HomeScreen(
     }
     LaunchedEffect(Unit) { load() }
 
-    val list = if (tab == 1) popular else latest
+    val list = when (tab) {
+        1 -> popular
+        2 -> latest.filter { it.latestChapter.isNotBlank() }.sortedByDescending { it.latestChapter }
+        else -> latest
+    }
 
     LazyColumn(Modifier.fillMaxSize()) {
         item {
@@ -367,6 +372,11 @@ private fun HomeScreen(
                     Text("مانجا · مانهوا · مانهوا", color = TextSec, fontSize = 11.sp)
                 }
                 IconButton(onSearch) { Icon(Icons.Default.Search, null, tint = TextPri) }
+                IconButton({}) {
+                    BadgedBox(badge = { Badge(containerColor = accent) { Text("3") } }) {
+                        Icon(Icons.Default.Notifications, "الإشعارات", tint = TextPri)
+                    }
+                }
             }
         }
 
@@ -405,36 +415,33 @@ private fun HomeScreen(
         val feat = list.firstOrNull()
         if (feat != null) {
             item {
-                Box(Modifier.fillMaxWidth().height(210.dp).padding(horizontal = 14.dp, vertical = 6.dp)
-                    .clip(RoundedCornerShape(20.dp)).clickable { onPick(feat) }) {
-                    if (feat.coverUrl.isNotEmpty())
-                        MImg(feat.coverUrl, Modifier.fillMaxSize())
-                    else
-                        Box(Modifier.fillMaxSize().background(
-                            Brush.linearGradient(listOf(accent.copy(.7f), accent.copy(.2f)))))
-                    Box(Modifier.matchParentSize().background(
-                        Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(.9f)))))
-                    Surface(color = accent, shape = RoundedCornerShape(bottomEnd = 14.dp),
-                        modifier = Modifier.align(Alignment.TopStart)) {
-                        Text("⭐ مميز", color = Color.White, fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
+                Row(Modifier.fillMaxWidth().height(230.dp).padding(horizontal = 14.dp, vertical = 6.dp)
+                    .clip(RoundedCornerShape(18.dp)).background(Surface2).clickable { onPick(feat) }) {
+                    Box(Modifier.fillMaxHeight().weight(.95f)) {
+                        if (feat.coverUrl.isNotEmpty()) MImg(feat.coverUrl, Modifier.fillMaxSize())
+                        else Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(accent.copy(.75f), Surface3))))
+                        Box(Modifier.matchParentSize().background(Brush.horizontalGradient(listOf(Surface2, Color.Transparent))))
                     }
-                    Column(Modifier.align(Alignment.BottomStart).padding(16.dp)) {
-                        Text(feat.title, color = TextPri, fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Column(Modifier.weight(1.25f).fillMaxHeight().padding(start = 14.dp, end = 16.dp, top = 22.dp, bottom = 18.dp),
+                        verticalArrangement = Arrangement.Center) {
+                        Text("مميز اليوم", color = accent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.height(8.dp))
+                        Text(feat.title, color = TextPri, fontSize = 19.sp, lineHeight = 26.sp,
+                            fontWeight = FontWeight.Bold, maxLines = 3, overflow = TextOverflow.Ellipsis)
                         if (feat.latestChapter.isNotEmpty()) {
-                            Spacer(Modifier.height(4.dp))
-                            Row(verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Icon(Icons.Default.MenuBook, null, tint = accent,
-                                    modifier = Modifier.size(13.dp))
+                            Spacer(Modifier.height(8.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Icon(Icons.Default.MenuBook, null, tint = accent, modifier = Modifier.size(14.dp))
                                 Text(feat.latestChapter, color = TextSec, fontSize = 12.sp)
-                                if (feat.chapterDate.isNotEmpty()) {
-                                    Text("·", color = TextDim)
-                                    Text(feat.chapterDate, color = TextDim, fontSize = 11.sp)
-                                }
+                                if (feat.chapterDate.isNotEmpty()) Text("· ${feat.chapterDate}", color = TextDim, fontSize = 11.sp)
                             }
+                        }
+                        Spacer(Modifier.height(14.dp))
+                        Button({ onPick(feat) }, colors = ButtonDefaults.buttonColors(containerColor = accent),
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp)) {
+                            Icon(Icons.Default.PlayArrow, null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("مشاهدة", fontSize = 12.sp)
                         }
                     }
                 }
@@ -445,7 +452,7 @@ private fun HomeScreen(
         item {
             Row(Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("آخر التحديثات", "الأكثر شعبية").forEachIndexed { i, lbl ->
+                listOf("آخر التحديثات", "الأكثر شعبية", "التحميلات").forEachIndexed { i, lbl ->
                     val active = tab == i
                     val a by animateFloatAsState(if (active) 1f else .55f, label = "t")
                     Surface(
@@ -666,6 +673,7 @@ private fun DetailFullScreen(
     onBack: () -> Unit, onChapter: (ChapterItem) -> Unit
 ) {
     var tab       by remember { mutableStateOf(0) }
+    var userRating by remember { mutableStateOf(0) }
     val inLib     = library.any { it.url == detail.url }
     val asMItem   = MangaItem(detail.slug, detail.title, detail.slug, detail.coverUrl, detail.url)
 
@@ -713,6 +721,14 @@ private fun DetailFullScreen(
             Surface(color = Surface2) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        repeat(5) { i ->
+                            Icon(if (i < userRating) Icons.Default.Star else Icons.Outlined.StarBorder,
+                                "تقييم", tint = if (i < userRating) Gold else TextDim,
+                                modifier = Modifier.size(20.dp).clickable { userRating = i + 1 })
+                        }
+                    }
+                    Spacer(Modifier.weight(1f))
                     if (detail.chapters.isNotEmpty()) {
                         Button({ onChapter(detail.chapters.last()) },
                             colors = ButtonDefaults.buttonColors(containerColor = accent),
@@ -791,19 +807,23 @@ private fun DetailFullScreen(
             }
         } else {
             items(detail.chapters) { ch ->
-                Row(Modifier.fillMaxWidth().clickable { onChapter(ch) }.padding(horizontal = 16.dp, vertical = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Box(Modifier.size(36.dp).clip(RoundedCornerShape(8.dp)).background(Surface3), Alignment.Center) {
-                        Text(ch.number, color = accent, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Surface(color = Surface2, shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 4.dp)
+                        .clickable { onChapter(ch) }) {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Box(Modifier.size(42.dp).clip(RoundedCornerShape(9.dp)).background(accent.copy(.14f)), Alignment.Center) {
+                            Text(ch.number, color = accent, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Column(Modifier.weight(1f)) {
+                            Text(ch.title.ifEmpty { "الفصل ${ch.number}" }, color = TextPri, fontSize = 14.sp,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            if (ch.date.isNotEmpty()) Text(ch.date, color = TextDim, fontSize = 11.sp)
+                        }
+                        Icon(Icons.Default.ChevronLeft, null, tint = TextDim, modifier = Modifier.size(18.dp))
                     }
-                    Column(Modifier.weight(1f)) {
-                        Text(ch.title.ifEmpty { "الفصل ${ch.number}" }, color = TextPri, fontSize = 14.sp)
-                        if (ch.date.isNotEmpty()) Text(ch.date, color = TextDim, fontSize = 11.sp)
-                    }
-                    Icon(Icons.Default.ChevronLeft, null, tint = TextDim, modifier = Modifier.size(18.dp))
                 }
-                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = .5.dp, color = Border)
             }
         }
         item { Spacer(Modifier.height(48.dp)) }
