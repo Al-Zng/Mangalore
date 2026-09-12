@@ -1039,8 +1039,8 @@ private fun HistoryScreen(
 private fun ProfileScreen(accent: Color, onBack: () -> Unit) {
     Column(Modifier.fillMaxSize()) {
         TopBar("الملف الشخصي", accent, onBack)
-        Box(Modifier.fillMaxSize(), Alignment.Center) {
-            Column(Modifier.padding(24.dp), Alignment.CenterHorizontally) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Column(modifier = Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Box(Modifier.size(80.dp).clip(CircleShape)
                     .background(Surface2).border(2.dp, Border, CircleShape), Alignment.Center) {
                     Icon(Icons.Default.Person, null, tint = TextDim, modifier = Modifier.size(40.dp))
@@ -1240,7 +1240,7 @@ private fun NavDrawer(
         Text(value, color = TextPri, fontSize = 13.sp, fontWeight = FontWeight.Medium,
             modifier = Modifier.padding(start = 12.dp), textAlign = TextAlign.End)
     }
-    HorizontalDivider(Modifier.padding(horizontal = 16.dp), color = Border, .5.dp)
+    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = .5.dp, color = Border)
 }
 
 @Composable private fun ExpandText(text: String, modifier: Modifier = Modifier) {
@@ -1261,7 +1261,7 @@ private fun NavDrawer(
         letterSpacing = .5.sp, modifier = Modifier.padding(start = 20.dp, top = 20.dp, bottom = 4.dp))
 }
 
-@Composable private fun D2() { HorizontalDivider(Modifier.padding(horizontal = 16.dp), color = Border, .5.dp) }
+@Composable private fun D2() { HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = .5.dp, color = Border) }
 
 @Composable private fun SCard(content: @Composable ColumnScope.() -> Unit) {
     Surface(color = Surface2, shape = RoundedCornerShape(14.dp),

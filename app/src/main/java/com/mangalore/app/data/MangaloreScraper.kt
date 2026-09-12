@@ -6,6 +6,7 @@ import kotlinx.coroutines.withContext
 import okhttp3.Cookie
 import okhttp3.CookieJar
 import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.jsoup.Jsoup
@@ -52,13 +53,13 @@ private class PersistentCookieJar(context: Context) : CookieJar {
 
     init {
         if (file.exists()) file.readLines().forEach { line ->
-            runCatching { Cookie.parse(HttpUrl.get("https://mangalik.net/"), line) }
-                .getOrNull()?.let { cookies.getOrPut(it.domain()) { mutableListOf() }.add(it) }
+            runCatching { Cookie.parse("https://mangalik.net/".toHttpUrl(), line) }
+                .getOrNull()?.let { cookies.getOrPut(it.domain) { mutableListOf() }.add(it) }
         }
     }
 
     override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
-        this.cookies[url.host()] = cookies.toMutableList()
+        this.cookies[url.host] = cookies.toMutableList()
         file.parentFile?.mkdirs()
         file.writeText(this.cookies.values.flatten().joinToString("\n") { it.toString() })
     }
@@ -68,8 +69,8 @@ private class PersistentCookieJar(context: Context) : CookieJar {
 
     fun importHeader(url: HttpUrl, header: String) {
         header.split(';').mapNotNull { Cookie.parse(url, it.trim()) }.forEach { cookie ->
-            cookies.getOrPut(url.host()) { mutableListOf() }.removeAll { it.name() == cookie.name() }
-            cookies.getOrPut(url.host()) { mutableListOf() }.add(cookie)
+            cookies.getOrPut(url.host) { mutableListOf() }.removeAll { it.name == cookie.name }
+            cookies.getOrPut(url.host) { mutableListOf() }.add(cookie)
         }
         file.parentFile?.mkdirs()
         file.writeText(cookies.values.flatten().joinToString("\n") { it.toString() })
