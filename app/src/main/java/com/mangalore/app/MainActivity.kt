@@ -2,7 +2,10 @@ package com.mangalore.app
 
 import android.net.Uri
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.webkit.CookieManager
+import android.webkit.JavascriptInterface
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -37,6 +40,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.*
 import androidx.compose.ui.unit.*
 import androidx.compose.ui.viewinterop.AndroidView
+import org.json.JSONArray
 
 // ─────────────────────────────────────────────────────────────
 // DESIGN TOKENS — Mangamello palette
@@ -91,20 +95,8 @@ private data class Manga(
     val description: String = "تدور أحداث هذه القصة في عالم مليء بالأسرار والمواجهات المصيرية. تابع أحدث الفصول واستمتع بتجربة قراءة مريحة ومخصصة بالكامل."
 )
 
-private val Mangas = listOf(
-    Manga("Back to Spring", 9.28f, 82, listOf(Color(0xFF9ACDDD), Color(0xFF18405A)), listOf("رومانسية", "خيال")),
-    Manga("I Became the Daughter of a Million-Dollar Actor", 8.82f, 64, listOf(Color(0xFFE8A7B7), Color(0xFF3A1C30)), listOf("دراما", "رومانسية")),
-    Manga("Bad Born Blood", 9.02f, 99, listOf(Color(0xFF152F4A), Color(0xFFB34035)), listOf("أكشن", "غموض")),
-    Manga("Revenge of the Iron-Blooded Sword Hound", 9.11f, 78, listOf(Color(0xFF5B1E29), Color(0xFFE8A04B)), listOf("أكشن", "خيال")),
-    Manga("Nano Machine", 9.40f, 245, listOf(Color(0xFF152B38), Color(0xFF7BBDD0)), listOf("أكشن", "خيال علمي")),
-    Manga("Magic Emperor", 9.16f, 620, listOf(Color(0xFF372066), Color(0xFFAC4FDC)), listOf("خيال", "سحر")),
-    Manga("Murim's Youngest Miracle", 9.43f, 87, listOf(Color(0xFF4A291E), Color(0xFFF1B76E)), listOf("فنون قتالية")),
-    Manga("Becoming a Legendary Ace Employee", 9.12f, 56, listOf(Color(0xFF244D92), Color(0xFFB2D3ED)), listOf("كوميديا", "دراما")),
-    Manga("Solo Leveling", 9.55f, 202, listOf(Color(0xFF161B3B), Color(0xFF6E54C8)), listOf("أكشن", "خيال")),
-    Manga("Logging 10,000 Years into the Future", 8.98f, 135, listOf(Color(0xFF173A4A), Color(0xFF52A5B8)), listOf("خيال علمي")),
-    Manga("Death Is the Only Ending for the Villainess", 9.31f, 145, listOf(Color(0xFF8D3155), Color(0xFFEDB4BD)), listOf("رومانسية", "دراما")),
-    Manga("I Became the Tyrant's Time-Limited Wife", 8.87f, 71, listOf(Color(0xFF4D2948), Color(0xFFDB789B)), listOf("رومانسية", "إثارة")),
-)
+// Catalog content comes from the MangaLek session, not hard-coded sample data.
+private val Mangas = emptyList<Manga>()
 private data class Comment(
     val user: String, val text: String, val likes: Int,
     val rank: Int // 1=ذهبي 2=فضي 3=برونزي 0=عادي
@@ -141,6 +133,12 @@ private fun MangaloreApp() {
     var picked  by remember { mutableStateOf<Manga?>(null) }
     var reading by remember { mutableStateOf<Manga?>(null) }
     var showMangalekGate by remember { mutableStateOf(true) }
+    var showEntryAnimation by remember { mutableStateOf(false) }
+    val liveCatalog = remember { mutableStateListOf<Manga>() }
+
+    LaunchedEffect(Unit) {
+        showEntryAnimation = true
+    }
 
     BackHandler(enabled = drawer || reading != null || picked != null || screen != "home") {
         when {
@@ -163,14 +161,15 @@ private fun MangaloreApp() {
             LocalTextStyle provides LocalTextStyle.current.copy(fontFamily = ReadexPro)
         ) {
             Box(Modifier.fillMaxSize().background(bg)) {
-                AnimatedContent(
-                    targetState = Triple(screen, picked?.title, reading?.title),
-                    transitionSpec = {
-                        (fadeIn(tween(220)) + slideInHorizontally { -it / 12 }) togetherWith
-                            fadeOut(tween(140))
-                    },
+                MangalekCatalogSource { items ->
+                    liveCatalog.clear()
+                    liveCatalog.addAll(items)
+                }
+                AnimatedVisibility(
+                    visible = showEntryAnimation,
+                    enter = fadeIn(tween(280)) + slideInHorizontally { -it / 12 },
                     label = "manga_screen_entrance"
-                ) { _ ->
+                ) {
                     when {
                         reading != null -> MangalekReader(reading!!, onBack = { reading = null })
                         picked != null -> DetailScreen(
@@ -206,6 +205,7 @@ private fun MangaloreApp() {
                         )
                         else -> HomeScreen(
                             accent = themeAccent,
+                            catalog = liveCatalog,
                             onMenu = { drawer = true },
                             onSearch = { screen = "search" },
                             onPick = { picked = it }
@@ -215,12 +215,8 @@ private fun MangaloreApp() {
 
                 AnimatedVisibility(
                     visible = drawer,
-                    enter = fadeIn(tween(180)) + slideInHorizontally(
-                        initialOffsetX = { if (layoutDirection == LayoutDirection.Rtl) -it else it }
-                    ),
-                    exit = fadeOut(tween(140)) + slideOutHorizontally(
-                        targetOffsetX = { if (layoutDirection == LayoutDirection.Rtl) -it else it }
-                    ),
+                    enter = fadeIn(tween(180)) + slideInHorizontally(initialOffsetX = { it }),
+                    exit = fadeOut(tween(140)) + slideOutHorizontally(targetOffsetX = { it }),
                     label = "navigation_drawer"
                 ) {
                     NavigationDrawer(
@@ -328,10 +324,62 @@ private fun GenreChip(label: String, accent: Color) {
 // HOME SCREEN
 // ─────────────────────────────────────────────────────────────
 @Composable
-private fun HomeScreen(accent: Color, onMenu: () -> Unit, onSearch: () -> Unit, onPick: (Manga) -> Unit) {
+private fun MangalekCatalogSource(onCatalog: (List<Manga>) -> Unit) {
+    AndroidView(
+        modifier = Modifier.size(1.dp).alpha(0f),
+        factory = { context ->
+            WebView(context).apply {
+                CookieManager.getInstance().setAcceptCookie(true)
+                CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
+                settings.javaScriptEnabled = true
+                settings.domStorageEnabled = true
+                settings.loadsImagesAutomatically = true
+                settings.userAgentString = "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36"
+                addJavascriptInterface(object {
+                    @JavascriptInterface
+                    fun publish(raw: String) {
+                        val parsed = runCatching {
+                            val json = JSONArray(raw)
+                            (0 until json.length()).map { index ->
+                                val item = json.getJSONObject(index)
+                                Manga(item.optString("title"), item.optDouble("score", 0.0).toFloat(), item.optInt("chapters", 0), listOf(Color(0xFF243B55), Color(0xFF141E30)))
+                            }
+                        }.getOrDefault(emptyList())
+                        Handler(Looper.getMainLooper()).post { onCatalog(parsed) }
+                    }
+                }, "MangaLekBridge")
+                webViewClient = object : WebViewClient() {
+                    override fun onPageFinished(view: WebView, url: String) {
+                        view.evaluateJavascript("""(function(){
+                          const seen = new Set(), out = [];
+                          document.querySelectorAll('a[href*="/manga/"]').forEach(function(a) {
+                            const title = (a.innerText || a.getAttribute('title') || '').trim();
+                            const card = a.closest('.page-item-detail, .c-tabs-item__content, .row, article, .item-summary') || a.parentElement;
+                            const text = (card ? card.innerText : '').trim();
+                            if (!title || seen.has(title)) return;
+                            seen.add(title);
+                            const score = text.match(/([0-9]+(?:\\.[0-9]+)?)/);
+                            const chapters = text.match(/(?:chapter|فصل)\\s*([0-9]+)/i);
+                            out.push({title:title, score:score ? parseFloat(score[1]) : 0, chapters:chapters ? parseInt(chapters[1]) : 0});
+                          });
+                          return JSON.stringify(out.slice(0, 60));
+                        })();""".trimIndent()) { raw ->
+                            val decoded = raw?.removePrefix("\"")?.removeSuffix("\"")?.replace("\\\"", "\"") ?: "[]"
+                            evaluateJavascript("window.MangaLekBridge.publish(" + org.json.JSONObject.quote(decoded) + ")", null)
+                        }
+                    }
+                }
+                loadUrl("https://mangalik.net/")
+            }
+        }
+    )
+}
+
+@Composable
+private fun HomeScreen(catalog: List<Manga>, accent: Color, onMenu: () -> Unit, onSearch: () -> Unit, onPick: (Manga) -> Unit) {
     var activeTab by remember { mutableStateOf(0) }
     val tabs = listOf("آخر التحديثات", "الأكثر مشاهدة", "التحميلات")
-    val featured = Mangas[8] // Solo Leveling as featured
+    val featured = catalog.firstOrNull()
 
     LazyColumn(Modifier.fillMaxSize()) {
         // ── Top bar
@@ -353,7 +401,9 @@ private fun HomeScreen(accent: Color, onMenu: () -> Unit, onSearch: () -> Unit, 
 
         // ── Featured hero banner
         item {
-            Box(
+            if (featured == null) {
+                Text("جاري تحميل محتوى MangaLek…", color = TextSec, modifier = Modifier.padding(24.dp))
+            } else Box(
                 Modifier.fillMaxWidth().height(210.dp).padding(horizontal = 14.dp, vertical = 6.dp)
                     .clip(RoundedCornerShape(18.dp))
                     .background(Brush.linearGradient(featured.coverColors))
@@ -425,9 +475,9 @@ private fun HomeScreen(accent: Color, onMenu: () -> Unit, onSearch: () -> Unit, 
 
         // ── Grid
         val displayList = when (activeTab) {
-            1 -> Mangas.sortedByDescending { it.score }
-            2 -> Mangas.filter { it.chapters > 100 }
-            else -> Mangas
+            1 -> catalog.sortedByDescending { it.score }
+            2 -> catalog.filter { it.chapters > 100 }
+            else -> catalog
         }
         item {
             LazyVerticalGrid(
