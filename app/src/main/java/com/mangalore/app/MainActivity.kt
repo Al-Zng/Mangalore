@@ -1,6 +1,11 @@
 package com.mangalore.app
 
+import android.net.Uri
 import android.os.Bundle
+import android.webkit.CookieManager
+import android.webkit.WebResourceRequest
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -31,6 +36,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.*
 import androidx.compose.ui.unit.*
+import androidx.compose.ui.viewinterop.AndroidView
 
 // ─────────────────────────────────────────────────────────────
 // DESIGN TOKENS — Mangamello palette
@@ -135,6 +141,7 @@ private fun MangaloreApp() {
     var drawer  by remember { mutableStateOf(false) }
     var picked  by remember { mutableStateOf<Manga?>(null) }
     var reading by remember { mutableStateOf<Manga?>(null) }
+    var showMangalekGate by remember { mutableStateOf(true) }
 
     BackHandler(enabled = drawer || reading != null || picked != null || screen != "home") {
         when {
@@ -167,7 +174,10 @@ private fun MangaloreApp() {
                 ) { _ ->
                 when {
                     reading != null ->
-                        ReaderScreen(reading!!, onBack = { reading = null })
+                        MangalekReader(
+                            manga = reading!!,
+                            onBack = { reading = null }
+                        )
 
                     picked != null ->
                         DetailScreen(
@@ -237,6 +247,10 @@ private fun MangaloreApp() {
                             }
                         }
                     )
+                }
+
+                if (showMangalekGate) {
+                    MangalekCloudflareGate(onContinue = { showMangalekGate = false })
                 }
             }
         }
@@ -728,127 +742,157 @@ private fun ChapterRow(number: Int, accent: Color) {
 // ─────────────────────────────────────────────────────────────
 // READER SCREEN
 // ─────────────────────────────────────────────────────────────
+private fun mangalekSearchUrl(title: String): String =
+    "https://mangalik.net/?s=${Uri.encode(title)}&post_type=wp-manga"
+
+private const val MANGALEK_READER_SCRIPT = """
+(function() {
+  if (window.__mangalekReaderInstalled) return;
+  window.__mangalekReaderInstalled = true;
+  const css = document.createElement('style');
+  css.textContent = `
+    body { background:#08080a !important; }
+    .c-page__content, .reading-content-wrap { max-width:900px !important; margin:auto !important; }
+    .reading-content { background:#08080a !important; }
+    .mangalek-native-separator { margin:24px 0 16px; padding:13px 18px; border:1px solid #334a70; border-radius:12px; color:#f0f0f3; background:#151922; text-align:center; font:600 16px sans-serif; direction:rtl; }
+    .wp-manga-chapter-img { display:block !important; width:100% !important; height:auto !important; margin:0 auto 4px !important; }
+    .site-header, .c-breadcrumb-wrapper, .reading-content .entry-content p { display:none !important; }
+  `;
+  document.head.appendChild(css);
+  const attr = (img, name) => img.getAttribute(name) || img.dataset[name.replace('data-', '')] || '';
+  const chapterNumber = () => {
+    const selected = document.querySelector('select option:checked, select option[selected]');
+    return (selected && selected.textContent.trim()) || (location.pathname.match(/\/([^/]+)\/?$/) || [,'الفصل'])[1];
+  };
+  const makeSeparator = (label) => {
+    const el = document.createElement('div');
+    el.className = 'mangalek-native-separator';
+    el.textContent = 'الفصل ' + label;
+    return el;
+  };
+  const imageUrls = (doc) => Array.from(doc.querySelectorAll('.wp-manga-chapter-img, .reading-content img'))
+    .map(img => attr(img, 'data-src') || attr(img, 'data-lazy-src') || attr(img, 'data-original') || attr(img, 'src'))
+    .filter(Boolean);
+  const chapterOptions = () => Array.from(document.querySelectorAll('select option[data-redirect]'))
+    .map(o => ({ url:o.getAttribute('data-redirect'), label:o.textContent.trim(), value:o.value }));
+  const findNext = () => {
+    const options = chapterOptions();
+    if (!options.length) return null;
+    const current = location.href.replace(/\/$/, '');
+    const index = options.findIndex(o => o.url.replace(/\/$/, '') === current);
+    return options[index >= 0 ? index + 1 : 0] || null;
+  };
+  let sentinel = null;
+  const appendChapter = async (next) => {
+    if (!next || window.__mangalekLoading) return;
+    window.__mangalekLoading = true;
+    try {
+      const response = await fetch(next.url, { credentials:'include' });
+      const html = await response.text();
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      const urls = imageUrls(doc);
+      if (!urls.length) return;
+      const host = document.querySelector('.reading-content') || document.body;
+      host.appendChild(makeSeparator(next.label.replace(/[^0-9.\-]/g, '') || next.label));
+      urls.forEach((url, i) => {
+        const img = document.createElement('img');
+        img.className = 'wp-manga-chapter-img';
+        img.src = url;
+        img.alt = 'صفحة ' + (i + 1);
+        host.appendChild(img);
+      });
+      window.__mangalekNext = null;
+      window.__mangalekNextUrl = next.url;
+      if (sentinel) host.appendChild(sentinel);
+    } finally { window.__mangalekLoading = false; }
+  };
+  const install = () => {
+    const result = document.querySelector('.reading-content');
+    if (!result) {
+      const first = document.querySelector('.c-tabs-item__content a[href*="/manga/"]');
+      if (first && location.pathname === '/') { location.href = first.href; return; }
+      return;
+    }
+    result.querySelectorAll('img').forEach(img => {
+      const url = attr(img, 'data-src') || attr(img, 'data-lazy-src') || attr(img, 'data-original') || attr(img, 'src');
+      if (url) img.src = url;
+    });
+    if (!result.querySelector('.mangalek-native-separator')) {
+      result.insertBefore(makeSeparator(chapterNumber()), result.firstChild);
+    }
+    sentinel = document.createElement('div');
+    sentinel.id = 'mangalek-infinite-sentinel';
+    result.appendChild(sentinel);
+    new IntersectionObserver(entries => {
+      if (entries.some(e => e.isIntersecting)) appendChapter(findNext());
+    }, { rootMargin:'900px' }).observe(sentinel);
+  };
+  setTimeout(install, 400);
+})();
+"""
+
 @Composable
-private fun ReaderScreen(manga: Manga, onBack: () -> Unit) {
-    var uiVisible     by remember { mutableStateOf(true) }
-    var brightness    by remember { mutableStateOf(.8f) }
-    var showBrightness by remember { mutableStateOf(false) }
-    var showChapters  by remember { mutableStateOf(false) }
-    var currentChapter by remember { mutableStateOf(manga.chapters) }
-
-    Box(
-        Modifier.fillMaxSize().background(Black)
-            .pointerInput(Unit) { detectTapGestures { uiVisible = !uiVisible } }
-    ) {
-        // Simulated manga pages
-        LazyColumn(Modifier.fillMaxSize()) {
-            items(8) { i ->
-                Box(
-                    Modifier.fillMaxWidth().height(320.dp)
-                        .background(
-                            Brush.verticalGradient(
-                                listOf(manga.coverColors[0].copy(.3f), manga.coverColors[1].copy(.3f))
-                            )
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text("صفحة ${i + 1}", color = Color.White.copy(.3f), fontSize = 20.sp)
-                }
-                if (i < 7) Spacer(Modifier.height(2.dp))
-            }
-            item { Spacer(Modifier.height(80.dp)) }
-        }
-
-        // Top toolbar
-        AnimatedVisibility(uiVisible, Modifier.align(Alignment.TopCenter), enter = fadeIn() + slideInVertically(), exit = fadeOut() + slideOutVertically()) {
-            Surface(
-                color = Black.copy(.88f),
-                modifier = Modifier.fillMaxWidth().statusBarsPadding()
-            ) {
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    IconButton(onBack) { Icon(if (LocalLayoutDirection.current == LayoutDirection.Rtl) Icons.Default.ArrowForward else Icons.Default.ArrowBack, "رجوع", tint = TextPri) }
-                    Column(Modifier.weight(1f)) {
-                        Text(manga.title, color = TextPri, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text("الفصل $currentChapter", color = TextSec, fontSize = 12.sp)
+private fun MangalekCloudflareGate(onContinue: () -> Unit) {
+    Box(Modifier.fillMaxSize().background(Color.Black.copy(.92f)).padding(18.dp), contentAlignment = Alignment.Center) {
+        Surface(color = Surface2, shape = RoundedCornerShape(18.dp), shadowElevation = 18.dp, modifier = Modifier.fillMaxWidth().fillMaxHeight(.82f)) {
+            Column(Modifier.fillMaxSize()) {
+                Text("التحقق من MangaLek", color = TextPri, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp))
+                Text("أكمل تحدي Cloudflare يدويًا داخل النافذة، ثم اضغط متابعة. التطبيق لا يتجاوز التحدي آليًا.", color = TextSec, fontSize = 12.sp, lineHeight = 19.sp, modifier = Modifier.padding(horizontal = 18.dp))
+                AndroidView(
+                    modifier = Modifier.weight(1f).fillMaxWidth().padding(top = 10.dp),
+                    factory = { context ->
+                        WebView(context).apply {
+                            CookieManager.getInstance().setAcceptCookie(true)
+                            CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
+                            settings.javaScriptEnabled = true
+                            settings.domStorageEnabled = true
+                            settings.loadsImagesAutomatically = true
+                            settings.userAgentString = "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36"
+                            webViewClient = WebViewClient()
+                            loadUrl("https://mangalik.net/")
+                        }
                     }
-                    // Next chapter
-                    IconButton({ if (currentChapter < manga.chapters) currentChapter++ }) {
-                        Icon(Icons.Default.NavigateBefore, "التالي", tint = TextPri)
-                    }
+                )
+                Button(onClick = onContinue, modifier = Modifier.fillMaxWidth().padding(14.dp), shape = RoundedCornerShape(12.dp)) {
+                    Text("تم التحقق — متابعة", fontFamily = ReadexPro)
                 }
             }
         }
+    }
+}
 
-        // Bottom toolbar
-        AnimatedVisibility(uiVisible, Modifier.align(Alignment.BottomCenter), enter = fadeIn() + slideInVertically { it }, exit = fadeOut() + slideOutVertically { it }) {
-            Surface(color = Black.copy(.92f), modifier = Modifier.fillMaxWidth()) {
-                Column {
-                    // Brightness slider
-                    AnimatedVisibility(showBrightness) {
-                        Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.BrightnessLow, null, tint = TextSec, modifier = Modifier.size(18.dp))
-                            Slider(value = brightness, onValueChange = { brightness = it }, modifier = Modifier.weight(1f).padding(horizontal = 8.dp), colors = SliderDefaults.colors(thumbColor = Accent, activeTrackColor = Accent))
-                            Icon(Icons.Default.BrightnessHigh, null, tint = TextPri, modifier = Modifier.size(18.dp))
+@Composable
+private fun MangalekReader(manga: Manga, onBack: () -> Unit) {
+    var webView by remember { mutableStateOf<WebView?>(null) }
+    Box(Modifier.fillMaxSize().background(Black)) {
+        AndroidView(
+            modifier = Modifier.fillMaxSize().padding(top = 58.dp),
+            factory = { context ->
+                WebView(context).apply {
+                    CookieManager.getInstance().setAcceptCookie(true)
+                    CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
+                    settings.javaScriptEnabled = true
+                    settings.domStorageEnabled = true
+                    settings.loadsImagesAutomatically = true
+                    settings.useWideViewPort = true
+                    settings.loadWithOverviewMode = true
+                    settings.userAgentString = "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36"
+                    webViewClient = object : WebViewClient() {
+                        override fun onPageFinished(view: WebView, url: String) {
+                            view.evaluateJavascript(MANGALEK_READER_SCRIPT, null)
                         }
                     }
-                    Row(
-                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
-                        horizontalArrangement = Arrangement.SpaceEvenly,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        ReaderIconBtn(Icons.Default.ScreenRotation, "تدوير") {}
-                        ReaderIconBtn(Icons.Default.PlayCircle, "تشغيل") {}
-                        ReaderIconBtn(Icons.Default.Brightness6, "سطوع") { showBrightness = !showBrightness }
-                        ReaderIconBtn(Icons.Default.List, "الفصول") { showChapters = true }
-                        ReaderIconBtn(Icons.Default.BrokenImage, "إصلاح") {}
-                    }
+                    webView = this
+                    loadUrl(mangalekSearchUrl(manga.title))
                 }
-            }
-        }
-
-        // Chapter list bottom sheet (simplified)
-        if (showChapters) {
-            Box(
-                Modifier.fillMaxSize().background(Color.Black.copy(.6f)).clickable { showChapters = false },
-                contentAlignment = Alignment.BottomCenter
-            ) {
-                Surface(
-                    Modifier.fillMaxWidth().fillMaxHeight(.55f).clickable {},
-                    color = Surface2,
-                    shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
-                ) {
-                    Column {
-                        Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text("الفصول", color = TextPri, fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                            IconButton({ showChapters = false }) { Icon(Icons.Default.Close, "إغلاق", tint = TextSec) }
-                        }
-                        HorizontalDivider(color = Border)
-                        LazyColumn {
-                            items(minOf(manga.chapters, 30)) { i ->
-                                val chNum = manga.chapters - i
-                                Row(
-                                    Modifier.fillMaxWidth().clickable { currentChapter = chNum; showChapters = false }
-                                        .padding(horizontal = 20.dp, vertical = 14.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        "الفصل $chNum",
-                                        color = if (chNum == currentChapter) Accent else TextPri,
-                                        fontWeight = if (chNum == currentChapter) FontWeight.Bold else FontWeight.Normal
-                                    )
-                                    if (chNum == currentChapter) {
-                                        Spacer(Modifier.weight(1f))
-                                        Icon(Icons.Default.PlayArrow, null, tint = Accent, modifier = Modifier.size(16.dp))
-                                    }
-                                }
-                                HorizontalDivider(Modifier.padding(horizontal = 20.dp), color = Border, thickness = .5.dp)
-                            }
-                        }
-                    }
-                }
+            },
+            update = { webView = it }
+        )
+        Surface(color = Black.copy(.9f), modifier = Modifier.fillMaxWidth().statusBarsPadding()) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onBack) { Icon(Icons.Default.ArrowForward, "رجوع", tint = TextPri) }
+                Text("${manga.title} — قارئ MangaLek", color = TextPri, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                IconButton(onClick = { webView?.reload() }) { Icon(Icons.Default.Refresh, "تحديث", tint = TextSec) }
             }
         }
     }
