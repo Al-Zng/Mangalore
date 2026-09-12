@@ -91,7 +91,20 @@ private data class Manga(
     val description: String = "تدور أحداث هذه القصة في عالم مليء بالأسرار والمواجهات المصيرية. تابع أحدث الفصول واستمتع بتجربة قراءة مريحة ومخصصة بالكامل."
 )
 
-private val Mangas = emptyList<Manga>()
+private val Mangas = listOf(
+    Manga("Back to Spring", 9.28f, 82, listOf(Color(0xFF9ACDDD), Color(0xFF18405A)), listOf("رومانسية", "خيال")),
+    Manga("I Became the Daughter of a Million-Dollar Actor", 8.82f, 64, listOf(Color(0xFFE8A7B7), Color(0xFF3A1C30)), listOf("دراما", "رومانسية")),
+    Manga("Bad Born Blood", 9.02f, 99, listOf(Color(0xFF152F4A), Color(0xFFB34035)), listOf("أكشن", "غموض")),
+    Manga("Revenge of the Iron-Blooded Sword Hound", 9.11f, 78, listOf(Color(0xFF5B1E29), Color(0xFFE8A04B)), listOf("أكشن", "خيال")),
+    Manga("Nano Machine", 9.40f, 245, listOf(Color(0xFF152B38), Color(0xFF7BBDD0)), listOf("أكشن", "خيال علمي")),
+    Manga("Magic Emperor", 9.16f, 620, listOf(Color(0xFF372066), Color(0xFFAC4FDC)), listOf("خيال", "سحر")),
+    Manga("Murim's Youngest Miracle", 9.43f, 87, listOf(Color(0xFF4A291E), Color(0xFFF1B76E)), listOf("فنون قتالية")),
+    Manga("Becoming a Legendary Ace Employee", 9.12f, 56, listOf(Color(0xFF244D92), Color(0xFFB2D3ED)), listOf("كوميديا", "دراما")),
+    Manga("Solo Leveling", 9.55f, 202, listOf(Color(0xFF161B3B), Color(0xFF6E54C8)), listOf("أكشن", "خيال")),
+    Manga("Logging 10,000 Years into the Future", 8.98f, 135, listOf(Color(0xFF173A4A), Color(0xFF52A5B8)), listOf("خيال علمي")),
+    Manga("Death Is the Only Ending for the Villainess", 9.31f, 145, listOf(Color(0xFF8D3155), Color(0xFFEDB4BD)), listOf("رومانسية", "دراما")),
+    Manga("I Became the Tyrant's Time-Limited Wife", 8.87f, 71, listOf(Color(0xFF4D2948), Color(0xFFDB789B)), listOf("رومانسية", "إثارة")),
+)
 private data class Comment(
     val user: String, val text: String, val likes: Int,
     val rank: Int // 1=ذهبي 2=فضي 3=برونزي 0=عادي
