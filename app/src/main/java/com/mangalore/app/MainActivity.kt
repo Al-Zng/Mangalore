@@ -233,7 +233,7 @@ private fun CoverBox(
     Box(
         modifier
             .clip(RoundedCornerShape(12.dp))
-            .background(Brush.linearGradient(manga.coverColors, Offset(0f, 0f), Offset(Float.MAX_VALUE, Float.MAX_VALUE)))
+            .background(Brush.linearGradient(manga.coverColors, start = Offset.Zero, end = Offset.Infinite))
     ) {
         // subtle texture overlay
         Box(
