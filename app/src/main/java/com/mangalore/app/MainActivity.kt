@@ -1044,7 +1044,7 @@ private fun ReaderScreen(
                         modifier = Modifier.fillMaxWidth(),
                         loading = {
                             Box(Modifier.fillMaxWidth().height(270.dp), Alignment.Center) {
-                                CircularProgressIndicator(color=accent.copy(.5f), Modifier.size(30.dp), strokeWidth=2.dp)
+                                CircularProgressIndicator(color = accent.copy(.5f), modifier = Modifier.size(30.dp), strokeWidth = 2.dp)
                             }
                         },
                         error = {
