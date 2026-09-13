@@ -200,7 +200,7 @@ private fun App() {
                 if (toast.isNotEmpty()) {
                     LaunchedEffect(toast) { kotlinx.coroutines.delay(3000L); toast = "" }
                     Box(Modifier.fillMaxSize().padding(bottom = 32.dp), Alignment.BottomCenter) {
-                        Surface(Green, RoundedCornerShape(14.dp), shadowElevation = 8.dp) {
+                        Surface(color = Green, shape = RoundedCornerShape(14.dp), shadowElevation = 8.dp) {
                             Text(toast, color = Color.White, fontWeight = FontWeight.Medium,
                                 modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp))
                         }
@@ -553,7 +553,7 @@ private fun HomeScreen(accent: Color, onMenu: () -> Unit, onSearch: () -> Unit, 
                                     Box(Modifier.size(90.dp).clip(RoundedCornerShape(12.dp))) {
                                         Img(m.coverUrl, Modifier.fillMaxSize())
                                         if (m.latestChapter.isNotEmpty()) {
-                                            Surface(Color.Black.copy(.7f), RoundedCornerShape(topStart=7.dp),
+                                            Surface(color = Color.Black.copy(.7f), shape = RoundedCornerShape(topStart=7.dp),
                                                 modifier = Modifier.align(Alignment.BottomEnd)) {
                                                 Text(m.latestChapter, color=Color.White, fontSize=8.sp,
                                                     maxLines=1, modifier=Modifier.padding(horizontal=5.dp, vertical=2.dp))
@@ -594,7 +594,7 @@ private fun HomeScreen(accent: Color, onMenu: () -> Unit, onSearch: () -> Unit, 
                                 Img(m.coverUrl, Modifier.fillMaxSize())
                                 // Chapter badge
                                 if (m.latestChapter.isNotEmpty()) {
-                                    Surface(Color.Black.copy(.72f), RoundedCornerShape(topStart = 8.dp),
+                                    Surface(color = Color.Black.copy(.72f), shape = RoundedCornerShape(topStart = 8.dp),
                                         modifier = Modifier.align(Alignment.BottomEnd)) {
                                         Text(m.latestChapter, color = Color.White, fontSize = 9.sp, maxLines = 1,
                                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp))
@@ -602,7 +602,7 @@ private fun HomeScreen(accent: Color, onMenu: () -> Unit, onSearch: () -> Unit, 
                                 }
                                 // Score badge
                                 if (m.score.isNotEmpty() && m.score != "0") {
-                                    Surface(Color.Black.copy(.65f), RoundedCornerShape(bottomEnd = 8.dp),
+                                    Surface(color = Color.Black.copy(.65f), shape = RoundedCornerShape(bottomEnd = 8.dp),
                                         modifier = Modifier.align(Alignment.TopStart)) {
                                         Row(Modifier.padding(horizontal = 5.dp, vertical = 2.dp),
                                             verticalAlignment = Alignment.CenterVertically,
@@ -798,6 +798,7 @@ private fun DetailLoadingScreen(
 // ══════════════════════════════════════════════════════════════
 // DETAIL FULL
 // ══════════════════════════════════════════════════════════════
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun DetailScreen(
     d: MangaDetail, accent: Color, lib: MutableList<MangaItem>,
@@ -962,7 +963,7 @@ private fun DetailScreen(
                     }
                     Icon(Icons.Default.ChevronLeft, null, tint = TextDim, modifier = Modifier.size(17.dp))
                 }
-                HorizontalDivider(Modifier.padding(horizontal = 14.dp), color = Border, .5.dp)
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 14.dp), color = Border, thickness = .5.dp)
             }
         }
         item { Spacer(Modifier.height(48.dp)) }
@@ -1060,7 +1061,7 @@ private fun ReaderScreen(
         // Top bar
         AnimatedVisibility(bars && state==1,
             enter=fadeIn()+slideInVertically{-it}, exit=fadeOut()+slideOutVertically{-it}, label="rb") {
-            Surface(Color.Black.copy(.88f), modifier=Modifier.fillMaxWidth()) {
+            Surface(color = Color.Black.copy(.88f), modifier=Modifier.fillMaxWidth()) {
                 Row(Modifier.statusBarsPadding().padding(horizontal=4.dp, vertical=8.dp),
                     verticalAlignment=Alignment.CenterVertically) {
                     IconButton(onBack) { Icon(Icons.Default.ArrowForward, null, tint=Color.White) }
@@ -1102,7 +1103,7 @@ private fun LibraryScreen(accent:Color, items:List<MangaItem>, onBack:()->Unit,
                             Box(Modifier.fillMaxWidth().height(170.dp).clip(RoundedCornerShape(12.dp))) {
                                 Img(m.coverUrl, Modifier.fillMaxSize())
                                 IconButton({ onRemove(m) }, Modifier.align(Alignment.TopEnd).size(28.dp)) {
-                                    Surface(Color.Black.copy(.6f), CircleShape) {
+                                    Surface(color = Color.Black.copy(.6f), shape = CircleShape) {
                                         Icon(Icons.Default.Close, null, tint=Color.White,
                                             modifier=Modifier.padding(5.dp).size(12.dp))
                                     }
@@ -1148,7 +1149,7 @@ private fun HistoryScreen(accent:Color, hist:List<Triple<MangaItem,String,String
                         }
                         Icon(Icons.Default.ChevronLeft, null, tint=TextDim, modifier=Modifier.size(17.dp))
                     }
-                    HorizontalDivider(Modifier.padding(horizontal=14.dp), color=Border, .5.dp)
+                    HorizontalDivider(modifier = Modifier.padding(horizontal=14.dp), color=Border, thickness = .5.dp)
                 }
             }
         }
@@ -1238,7 +1239,7 @@ private fun SettingsScreen(accent:Color, amoled:Boolean, onAmoled:(Boolean)->Uni
 
     if (picker) {
         Box(Modifier.fillMaxSize().background(Color.Black.copy(.78f)).clickable { picker=false }, Alignment.Center) {
-            Surface(Modifier.padding(24.dp), Surface2, RoundedCornerShape(24.dp)) {
+            Surface(modifier = Modifier.padding(24.dp), color = Surface2, shape = RoundedCornerShape(24.dp)) {
                 Column(Modifier.padding(24.dp)) {
                     Text("لون التطبيق", color=TextPri, fontSize=18.sp, fontWeight=FontWeight.Bold)
                     Spacer(Modifier.height(16.dp))
@@ -1384,7 +1385,7 @@ private fun SpringCard(onClick:()->Unit, content:@Composable ()->Unit) {
         Text(value, color=TextPri, fontSize=13.sp, fontWeight=FontWeight.Medium,
             modifier=Modifier.padding(start=12.dp), textAlign=TextAlign.End)
     }
-    if (!last) HorizontalDivider(Modifier.padding(horizontal=16.dp), color=Border, .5.dp)
+    if (!last) HorizontalDivider(modifier = Modifier.padding(horizontal=16.dp), color=Border, thickness = .5.dp)
 }
 
 @Composable private fun ExpandText(text:String, modifier:Modifier=Modifier) {
@@ -1416,7 +1417,7 @@ private fun SpringCard(onClick:()->Unit, content:@Composable ()->Unit) {
         modifier=Modifier.padding(start=20.dp, top=20.dp, bottom=4.dp))
 }
 
-@Composable private fun D2() { HorizontalDivider(Modifier.padding(horizontal=16.dp), color=Border, .5.dp) }
+@Composable private fun D2() { HorizontalDivider(modifier = Modifier.padding(horizontal=16.dp), color=Border, thickness = .5.dp) }
 
 @Composable private fun SCard(content:@Composable ColumnScope.()->Unit) {
     Surface(color=Surface2, shape=RoundedCornerShape(14.dp),
