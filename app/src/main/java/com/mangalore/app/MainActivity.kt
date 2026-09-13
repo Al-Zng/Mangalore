@@ -120,6 +120,8 @@ private fun App() {
     var toast   by remember { mutableStateOf("") }
 
     fun push(d: Dest) { stack = stack + d; drawer = false }
+    fun root(d: Dest) { stack = listOf(d); drawer = false }
+    fun replaceTop(d: Dest) { stack = if (stack.size > 1) stack.dropLast(1) + d else listOf(d) }
     fun pop()  { if (stack.size > 1) stack = stack.dropLast(1) }
     fun home() { stack = listOf(Dest.Home); drawer = false }
 
@@ -134,6 +136,9 @@ private fun App() {
 
                 // ── Screens ───────────────────────────────────
                 AnimatedContent(
+                    modifier = Modifier.fillMaxSize().padding(
+                        bottom = if (cur !is Dest.Reader && cur !is Dest.Detail && cur !is Dest.DetailFull) 80.dp else 0.dp
+                    ),
                     targetState = cur,
                     transitionSpec = {
                         val fwd = stack.size > 1
@@ -153,7 +158,7 @@ private fun App() {
                         is Dest.History -> HistoryScreen(accent, hist, ::pop, { push(Dest.Detail(it.first)) }) { hist.clear() }
                         is Dest.Profile -> ProfileScreen(accent, ::pop)
                         is Dest.Settings -> SettingsScreen(accent, amoled, { amoled = it }, { accent = it }, ::pop)
-                        is Dest.Detail -> DetailLoadingScreen(d.item, accent, lib, ::pop) { push(Dest.DetailFull(it)) }
+                        is Dest.Detail -> DetailLoadingScreen(d.item, accent, lib, ::pop) { replaceTop(Dest.DetailFull(it)) }
                         is Dest.DetailFull -> DetailScreen(
                             d.d, accent, lib, ::pop,
                             onChapter = { ch ->
@@ -184,6 +189,13 @@ private fun App() {
                             "profile"  -> { if (cur !is Dest.Profile)  push(Dest.Profile) else drawer = false }
                             "settings" -> { if (cur !is Dest.Settings) push(Dest.Settings) else drawer = false }
                         }
+                    }
+                }
+
+                // ── Fixed bottom navigation ───────────────────
+                if (cur !is Dest.Reader && cur !is Dest.Detail && cur !is Dest.DetailFull) {
+                    Box(Modifier.fillMaxWidth().align(Alignment.BottomCenter)) {
+                        BottomNav(cur, accent, ::root)
                     }
                 }
 
@@ -1264,6 +1276,43 @@ private fun SettingsScreen(accent:Color, amoled:Boolean, onAmoled:(Boolean)->Uni
 // ══════════════════════════════════════════════════════════════
 // DRAWER
 // ══════════════════════════════════════════════════════════════
+@Composable
+private fun BottomNav(cur: Dest, accent: Color, onNavigate: (Dest) -> Unit) {
+    val selected = when (cur) {
+        is Dest.Search -> 1
+        is Dest.Library -> 2
+        is Dest.History -> 3
+        else -> 0
+    }
+    NavigationBar(
+        modifier = Modifier.navigationBarsPadding(),
+        containerColor = Surface2,
+        tonalElevation = 12.dp
+    ) {
+        val items = listOf(
+            Triple("الرئيسية", Icons.Default.Home, Dest.Home),
+            Triple("البحث", Icons.Default.Search, Dest.Search),
+            Triple("مكتبتي", Icons.Default.LibraryBooks, Dest.Library),
+            Triple("السجل", Icons.Default.History, Dest.History)
+        )
+        items.forEachIndexed { index, (label, icon, destination) ->
+            NavigationBarItem(
+                selected = selected == index,
+                onClick = { if (selected != index) onNavigate(destination) },
+                icon = { Icon(icon, contentDescription = label) },
+                label = { Text(label, fontSize = 10.sp) },
+                colors = NavigationBarItemDefaults.colors(
+                    selectedIconColor = accent,
+                    selectedTextColor = accent,
+                    indicatorColor = accent.copy(alpha = .14f),
+                    unselectedIconColor = TextSec,
+                    unselectedTextColor = TextSec
+                )
+            )
+        }
+    }
+}
+
 @Composable
 private fun Drawer(accent:Color, cur:Dest, onClose:()->Unit, onNav:(String)->Unit) {
     Box(Modifier.fillMaxSize().background(Color.Black.copy(.65f)).pointerInput(Unit){detectTapGestures{onClose()}}) {
