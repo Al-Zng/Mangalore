@@ -25,15 +25,12 @@ import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.*
 import androidx.compose.ui.unit.*
-import coil.compose.AsyncImage
-import com.mangalore.app.data.MangaService
 
 // ─────────────────────────────────────────────────────────────
 // DESIGN TOKENS — Mangamello palette
@@ -81,7 +78,6 @@ private data class Manga(
     val score: Float,
     val chapters: Int,
     val coverColors: List<Color>,
-    val coverUrl: String = "",
     val genre: List<String> = emptyList(),
     val status: String = "",
     val origin: String = "",
@@ -113,26 +109,6 @@ private fun MangaloreApp() {
     var drawer by remember { mutableStateOf(false) }
     var picked by remember { mutableStateOf<Manga?>(null) }
     val catalog = Mangas
-    val context = LocalContext.current
-
-    LaunchedEffect(Unit) {
-        val remote = runCatching { MangaService.getInstance(context).fetchLatest() }.getOrDefault(emptyList())
-        if (remote.isNotEmpty()) {
-            Mangas.clear()
-            Mangas.addAll(remote.mapIndexed { index, item ->
-                Manga(
-                    title = item.title,
-                    score = item.rating.toFloatOrNull() ?: 0f,
-                    chapters = item.chapters.size,
-                    coverColors = listOf(ThemeColors[index % ThemeColors.size], Surface3),
-                    coverUrl = item.highQualityCoverURL,
-                    genre = item.genres,
-                    status = item.status,
-                    description = item.description
-                )
-            })
-        }
-    }
 
     BackHandler(enabled = drawer || picked != null || screen != "home") {
         when {
@@ -224,14 +200,6 @@ private fun CoverBox(
             .clip(RoundedCornerShape(12.dp))
             .background(Brush.linearGradient(manga.coverColors, start = Offset.Zero, end = Offset.Infinite))
     ) {
-        if (manga.coverUrl.isNotBlank()) {
-            AsyncImage(
-                model = manga.coverUrl,
-                contentDescription = manga.title,
-                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                modifier = Modifier.matchParentSize()
-            )
-        }
         // subtle texture overlay
         Box(
             Modifier.matchParentSize().background(
