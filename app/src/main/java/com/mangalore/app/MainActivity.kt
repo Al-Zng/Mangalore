@@ -87,7 +87,7 @@ private sealed class Dest {
     object Settings : Dest()
     data class Detail(val item: MangaItem) : Dest()
     data class DetailFull(val d: MangaDetail) : Dest()
-    data class Reader(val url: String, val chTitle: String, val manga: MangaDetail) : Dest()
+    data class Reader(val url: String, val chTitle: String, val manga: MangaDetail, val chapterIndex: Int) : Dest()
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -116,7 +116,7 @@ private fun App() {
     val lib     = remember { mutableStateListOf<MangaItem>() }
     val hist    = remember { mutableStateListOf<Triple<MangaItem, String, String>>() } // item, chNum, chTitle
 
-    var showCf  by remember { mutableStateOf(true) }
+    var showCf  by remember { mutableStateOf(false) }
     var toast   by remember { mutableStateOf("") }
 
     fun push(d: Dest) { stack = stack + d; drawer = false }
@@ -161,14 +161,17 @@ private fun App() {
                         is Dest.Detail -> DetailLoadingScreen(d.item, accent, lib, ::pop) { replaceTop(Dest.DetailFull(it)) }
                         is Dest.DetailFull -> DetailScreen(
                             d.d, accent, lib, ::pop,
-                            onChapter = { ch ->
+                            onChapter = { ch, index ->
                                 val asItem = MangaItem(d.d.slug, d.d.title, d.d.slug, d.d.coverUrl, d.d.coverFull, d.d.url)
                                 hist.removeAll { it.third == ch.url }
                                 hist.add(0, Triple(asItem, ch.number, ch.url))
-                                push(Dest.Reader(ch.url, ch.title.ifEmpty { "الفصل ${ch.number}" }, d.d))
+                                push(Dest.Reader(ch.url, ch.title.ifEmpty { "الفصل ${ch.number}" }, d.d, index))
                             }
                         )
-                        is Dest.Reader -> ReaderScreen(d.url, d.chTitle, d.manga.title, accent, ::pop) { showCf = true }
+                        is Dest.Reader -> ReaderScreen(
+                            d.url, d.chTitle, d.manga, d.chapterIndex, accent, ::pop,
+                            onCfNeeded = { showCf = true }
+                        )
                     }
                 }
 
@@ -814,9 +817,10 @@ private fun DetailLoadingScreen(
 @Composable
 private fun DetailScreen(
     d: MangaDetail, accent: Color, lib: MutableList<MangaItem>,
-    onBack: () -> Unit, onChapter: (ChapterItem) -> Unit
+    onBack: () -> Unit, onChapter: (ChapterItem, Int) -> Unit
 ) {
     var tab   by remember { mutableStateOf(0) }
+    var newestFirst by remember { mutableStateOf(true) }
     val inLib = lib.any { it.url == d.url }
     val asItem = MangaItem(d.slug, d.title, d.slug, d.coverUrl, d.coverFull, d.url)
 
@@ -875,7 +879,7 @@ private fun DetailScreen(
                 Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (d.chapters.isNotEmpty()) {
-                        Button({ onChapter(d.chapters.last()) }, Modifier.weight(1f),
+                        Button({ onChapter(d.chapters.last(), d.chapters.lastIndex) }, Modifier.weight(1f),
                             colors = ButtonDefaults.buttonColors(containerColor = accent),
                             shape = RoundedCornerShape(10.dp)) {
                             Icon(Icons.Default.PlayArrow, null, Modifier.size(16.dp))
@@ -883,7 +887,7 @@ private fun DetailScreen(
                             Text("ابدأ القراءة", fontSize = 13.sp)
                         }
                         if (d.chapters.size > 1) {
-                            Button({ onChapter(d.chapters.first()) }, Modifier.wrapContentWidth(),
+                                Button({ onChapter(d.chapters.first(), 0) }, Modifier.wrapContentWidth(),
                                 colors = ButtonDefaults.buttonColors(containerColor = Surface3),
                                 shape = RoundedCornerShape(10.dp)) {
                                 Icon(Icons.Default.LastPage, null, Modifier.size(16.dp))
@@ -960,22 +964,39 @@ private fun DetailScreen(
                 }
             }
         } else {
-            items(d.chapters) { ch ->
-                Row(Modifier.fillMaxWidth().clickable { onChapter(ch) }
-                    .padding(horizontal = 14.dp, vertical = 13.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Box(Modifier.size(34.dp).clip(RoundedCornerShape(8.dp)).background(Surface3),
-                        Alignment.Center) {
-                        Text(ch.number, color = accent, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    }
-                    Column(Modifier.weight(1f)) {
-                        Text(ch.title.ifEmpty { "الفصل ${ch.number}" }, color = TextPri, fontSize = 14.sp)
-                        if (ch.date.isNotEmpty()) Text(ch.date, color = TextDim, fontSize = 11.sp)
-                    }
-                    Icon(Icons.Default.ChevronLeft, null, tint = TextDim, modifier = Modifier.size(17.dp))
+            item {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(selected = newestFirst, onClick = { newestFirst = true },
+                        label = { Text("الأحدث") }, leadingIcon = { Icon(Icons.Default.ArrowDownward, null) })
+                    FilterChip(selected = !newestFirst, onClick = { newestFirst = false },
+                        label = { Text("الأقدم") }, leadingIcon = { Icon(Icons.Default.ArrowUpward, null) })
                 }
-                HorizontalDivider(modifier = Modifier.padding(horizontal = 14.dp), color = Border, thickness = .5.dp)
+            }
+            val orderedChapters = if (newestFirst) d.chapters.asReversed() else d.chapters
+            itemsIndexed(orderedChapters) { displayIndex, ch ->
+                val originalIndex = if (newestFirst) d.chapters.lastIndex - displayIndex else displayIndex
+                Surface(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp)
+                        .fillMaxWidth().clickable { onChapter(ch, originalIndex) },
+                    color = Surface2, shape = RoundedCornerShape(14.dp),
+                    border = BorderStroke(1.dp, Border)
+                ) {
+                    Row(Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Box(Modifier.size(42.dp).clip(RoundedCornerShape(10.dp)).background(accent.copy(.15f)),
+                            Alignment.Center) {
+                            Text(ch.number, color = accent, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Column(Modifier.weight(1f)) {
+                            Text(ch.title.ifEmpty { "الفصل ${ch.number}" }, color = TextPri, fontSize = 14.sp,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            if (ch.date.isNotEmpty()) Text(ch.date, color = TextDim, fontSize = 11.sp)
+                        }
+                        Icon(Icons.Default.PlayArrow, null, tint = accent, modifier = Modifier.size(18.dp))
+                    }
+                }
             }
         }
         item { Spacer(Modifier.height(48.dp)) }
@@ -987,20 +1008,37 @@ private fun DetailScreen(
 // ══════════════════════════════════════════════════════════════
 @Composable
 private fun ReaderScreen(
-    chUrl: String, chTitle: String, mangaTitle: String,
-    accent: Color, onBack: () -> Unit, onCfNeeded: () -> Unit
+    chUrl: String, chTitle: String, manga: MangaDetail, chapterIndex: Int,
+    accent: Color, onBack: () -> Unit,
+    onCfNeeded: () -> Unit
 ) {
     val scope  = rememberCoroutineScope()
-    var imgs   by remember { mutableStateOf<List<String>>(emptyList()) }
+    var blocks by remember { mutableStateOf<List<Pair<Int, List<String>>>>(emptyList()) }
+    var loadedIndices by remember { mutableStateOf<Set<Int>>(emptySet()) }
     var state  by remember { mutableStateOf(0) } // 0=loading,1=ok,2=cf,3=err
     var bars   by remember { mutableStateOf(true) }
 
-    fun load() { state = 0; scope.launch {
-        val (list, cf) = Scraper.fetchChapterImages(chUrl)
-        state = when { cf -> 2; list.isEmpty() -> 3; else -> 1 }
-        imgs = list
-    }}
-    LaunchedEffect(chUrl) { load() }
+    fun loadChapter(index: Int, reset: Boolean = false) {
+        if (index !in manga.chapters.indices || index in loadedIndices) return
+        state = 0
+        scope.launch {
+            val chapter = manga.chapters[index]
+            val (list, cf) = Scraper.fetchChapterImages(chapter.url)
+            when {
+                cf -> state = 2
+                list.isEmpty() -> if (reset) state = 3
+                else -> {
+                    blocks = if (reset) listOf(index to list) else blocks + (index to list)
+                    loadedIndices = loadedIndices + index
+                    state = 1
+                }
+            }
+        }
+    }
+    fun retry() {
+        blocks = emptyList(); loadedIndices = emptySet(); loadChapter(chapterIndex, reset = true)
+    }
+    LaunchedEffect(chUrl) { retry() }
 
     Box(Modifier.fillMaxSize().background(Black)) {
         when (state) {
@@ -1039,7 +1077,7 @@ private fun ReaderScreen(
                     Spacer(Modifier.height(12.dp))
                     Text("تعذّر تحميل الفصل", color = TextSec)
                     Spacer(Modifier.height(16.dp))
-                    Button(::load, colors = ButtonDefaults.buttonColors(containerColor = accent)) {
+                    Button(::retry, colors = ButtonDefaults.buttonColors(containerColor = accent)) {
                         Text("إعادة المحاولة", color = Color.White)
                     }
                 }
@@ -1048,23 +1086,51 @@ private fun ReaderScreen(
                 Modifier.fillMaxSize().clickable(indication=null,
                     interactionSource=remember{MutableInteractionSource()}) { bars=!bars }
             ) {
-                items(imgs) { url ->
-                    SubcomposeAsyncImage(
-                        model = ImageRequest.Builder(LocalContext.current).data(url)
-                            .addHeader("Referer","https://mangalik.net/").crossfade(true).build(),
-                        contentDescription = null, contentScale = ContentScale.FillWidth,
-                        modifier = Modifier.fillMaxWidth(),
-                        loading = {
-                            Box(Modifier.fillMaxWidth().height(270.dp), Alignment.Center) {
-                                CircularProgressIndicator(color = accent.copy(.5f), modifier = Modifier.size(30.dp), strokeWidth = 2.dp)
-                            }
-                        },
-                        error = {
-                            Box(Modifier.fillMaxWidth().height(90.dp).background(Surface2), Alignment.Center) {
-                                Icon(Icons.Default.BrokenImage, null, tint=TextDim, modifier=Modifier.size(30.dp))
+                blocks.forEachIndexed { blockPosition, (index, images) ->
+                    item(key = "chapter-header-$index") {
+                        Surface(color = Surface2, modifier = Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                                Text("الفصل ${manga.chapters[index].number}", color = accent,
+                                    fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                                Text(manga.chapters[index].title.ifEmpty { "الفصل ${manga.chapters[index].number}" },
+                                    color = TextSec, fontSize = 12.sp)
                             }
                         }
-                    )
+                    }
+                    itemsIndexed(images, key = { imageIndex, url -> "$index-$imageIndex-$url" }) { _, url ->
+                        SubcomposeAsyncImage(
+                            model = ImageRequest.Builder(LocalContext.current).data(url)
+                                .addHeader("Referer","https://mangalik.net/").crossfade(true).build(),
+                            contentDescription = null, contentScale = ContentScale.FillWidth,
+                            modifier = Modifier.fillMaxWidth(),
+                            loading = {
+                                Box(Modifier.fillMaxWidth().height(270.dp), Alignment.Center) {
+                                    CircularProgressIndicator(color = accent.copy(.5f), modifier = Modifier.size(30.dp), strokeWidth = 2.dp)
+                                }
+                            },
+                            error = {
+                                Box(Modifier.fillMaxWidth().height(90.dp).background(Surface2), Alignment.Center) {
+                                    Icon(Icons.Default.BrokenImage, null, tint=TextDim, modifier=Modifier.size(30.dp))
+                                }
+                            }
+                        )
+                    }
+                    if (blockPosition == blocks.lastIndex) {
+                        item(key = "chapter-loader-$index") {
+                            LaunchedEffect(index, blocks.size) {
+                                val next = index - 1
+                                if (next in manga.chapters.indices) loadChapter(next)
+                            }
+                            if (index > 0) {
+                                Box(Modifier.fillMaxWidth().padding(18.dp), Alignment.Center) {
+                                    CircularProgressIndicator(color = accent, modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                                }
+                            } else {
+                                Text("انتهت الفصول", color = TextDim, modifier = Modifier.fillMaxWidth()
+                                    .padding(24.dp), textAlign = TextAlign.Center)
+                            }
+                        }
+                    }
                 }
                 item { Spacer(Modifier.height(80.dp)) }
             }
@@ -1078,12 +1144,12 @@ private fun ReaderScreen(
                     verticalAlignment=Alignment.CenterVertically) {
                     IconButton(onBack) { Icon(Icons.Default.ArrowForward, null, tint=Color.White) }
                     Column(Modifier.weight(1f).padding(horizontal=4.dp)) {
-                        Text(mangaTitle, color=Color.White, fontSize=14.sp, fontWeight=FontWeight.Bold,
+                        Text(manga.title, color=Color.White, fontSize=14.sp, fontWeight=FontWeight.Bold,
                             maxLines=1, overflow=TextOverflow.Ellipsis)
                         Text(chTitle, color=Color.White.copy(.7f), fontSize=12.sp)
                     }
-                    if (imgs.isNotEmpty())
-                        Text("${imgs.size} ص", color=Color.White.copy(.6f), fontSize=12.sp,
+                    if (blocks.isNotEmpty())
+                        Text("${blocks.sumOf { it.second.size }} ص", color=Color.White.copy(.6f), fontSize=12.sp,
                             modifier=Modifier.padding(end=12.dp))
                 }
             }
