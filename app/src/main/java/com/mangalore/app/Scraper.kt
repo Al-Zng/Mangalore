@@ -223,11 +223,13 @@ object Scraper {
             if (isCf(html))        return@withContext Pair(emptyList(), true)
             val doc = Jsoup.parse(html)
             val imgs = doc.select("img.wp-manga-chapter-img, .reading-content img, .read-container img")
-                .map { el ->
-                    el.attr("src").ifEmpty { el.attr("data-src") }
-                        .ifEmpty { el.attr("data-lazy-src") }.trim()
+                .mapNotNull { el ->
+                    listOf("data-src", "data-lazy-src", "data-original", "src")
+                        .asSequence()
+                        .map { el.attr(it).trim() }
+                        .firstOrNull { it.startsWith("http") }
                 }
-                .filter { it.startsWith("http") }
+                .distinct()
             Pair(imgs, false)
         }
 

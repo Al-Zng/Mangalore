@@ -120,7 +120,6 @@ private fun App() {
     var toast   by remember { mutableStateOf("") }
 
     fun push(d: Dest) { stack = stack + d; drawer = false }
-    fun root(d: Dest) { stack = listOf(d); drawer = false }
     fun replaceTop(d: Dest) { stack = if (stack.size > 1) stack.dropLast(1) + d else listOf(d) }
     fun pop()  { if (stack.size > 1) stack = stack.dropLast(1) }
     fun home() { stack = listOf(Dest.Home); drawer = false }
@@ -136,9 +135,7 @@ private fun App() {
 
                 // ── Screens ───────────────────────────────────
                 AnimatedContent(
-                    modifier = Modifier.fillMaxSize().padding(
-                        bottom = if (cur !is Dest.Reader && cur !is Dest.Detail && cur !is Dest.DetailFull) 80.dp else 0.dp
-                    ),
+                    modifier = Modifier.fillMaxSize(),
                     targetState = cur,
                     transitionSpec = {
                         val fwd = stack.size > 1
@@ -175,6 +172,16 @@ private fun App() {
                     }
                 }
 
+                if (cur is Dest.Reader && !CookieStore.cfSolved && !showCf) {
+                    CfProbe(
+                        onChallenge = { showCf = true },
+                        onSolved = { cookies ->
+                            CookieStore.cfCookies = cookies
+                            CookieStore.cfSolved = true
+                        }
+                    )
+                }
+
                 // ── Drawer ────────────────────────────────────
                 AnimatedVisibility(drawer,
                     enter = fadeIn(tween(180)) + slideInHorizontally(
@@ -192,13 +199,6 @@ private fun App() {
                             "profile"  -> { if (cur !is Dest.Profile)  push(Dest.Profile) else drawer = false }
                             "settings" -> { if (cur !is Dest.Settings) push(Dest.Settings) else drawer = false }
                         }
-                    }
-                }
-
-                // ── Fixed bottom navigation ───────────────────
-                if (cur !is Dest.Reader && cur !is Dest.Detail && cur !is Dest.DetailFull) {
-                    Box(Modifier.fillMaxWidth().align(Alignment.BottomCenter)) {
-                        BottomNav(cur, accent, ::root)
                     }
                 }
 
@@ -317,6 +317,47 @@ private fun CfDialog(onSolved: (String) -> Unit, onSkip: () -> Unit) {
     }
 }
 
+@SuppressLint("SetJavaScriptEnabled")
+@Composable
+private fun CfProbe(onChallenge: () -> Unit, onSolved: (String) -> Unit) {
+    AndroidView(
+        factory = { ctx ->
+            WebView(ctx).apply {
+                settings.javaScriptEnabled = true
+                settings.domStorageEnabled = true
+                settings.databaseEnabled = true
+                settings.userAgentString = "Mozilla/5.0 (Linux; Android 14; Pixel 8) " +
+                    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
+                CookieManager.getInstance().setAcceptCookie(true)
+                CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
+                webViewClient = object : WebViewClient() {
+                    override fun onPageFinished(v: WebView?, url: String?) {
+                        val title = v?.title.orEmpty()
+                        val challengeText = listOf(
+                            "Just a moment", "Attention Required", "Checking your browser",
+                            "لحظة واحدة", "جارٍ التحقق", "تحقق من أنك لست روبوتًا", "تحقق من الأمان"
+                        )
+                        fun handle(text: String) {
+                            if (challengeText.any { text.contains(it, ignoreCase = true) }) {
+                                onChallenge()
+                            } else if (url?.contains("mangalik.net") == true) {
+                                CookieManager.getInstance().getCookie("https://mangalik.net")
+                                    ?.takeIf { it.isNotBlank() }?.let(onSolved)
+                            }
+                        }
+                        if (challengeText.any { title.contains(it, ignoreCase = true) }) handle(title)
+                        else v?.evaluateJavascript("document.body ? document.body.innerText : ''") { body ->
+                            handle(body.trim('"').replace("\\n", "\n"))
+                        }
+                    }
+                }
+                loadUrl(Scraper.cfChallengeUrl())
+            }
+        },
+        modifier = Modifier.size(1.dp).alpha(0f)
+    )
+}
+
 // ══════════════════════════════════════════════════════════════
 // HOME SCREEN
 // ══════════════════════════════════════════════════════════════
@@ -348,21 +389,8 @@ private fun HomeScreen(accent: Color, onMenu: () -> Unit, onSearch: () -> Unit, 
     val list    = if (tab == 1) popular else latest
     val feature = list.firstOrNull()
 
-    LazyColumn(Modifier.fillMaxSize()) {
-
-        // ── App bar ───────────────────────────────────────────
-        item {
-            Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 8.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onMenu) { Icon(Icons.Default.Menu, null, tint = TextPri) }
-                Column(Modifier.weight(1f).padding(horizontal = 4.dp)) {
-                    Text("Mangalore", color = TextPri, fontSize = 22.sp,
-                        fontWeight = FontWeight.ExtraBold, letterSpacing = (-0.5).sp)
-                    Text("مانجا · مانهوا · كوميك", color = TextSec, fontSize = 10.sp)
-                }
-                IconButton(onSearch) { Icon(Icons.Default.Search, null, tint = TextPri) }
-            }
-        }
+    Box(Modifier.fillMaxSize()) {
+        LazyColumn(Modifier.fillMaxSize().padding(top = 76.dp)) {
 
         // ── Shimmer or Error ──────────────────────────────────
         if (loading) {
@@ -639,7 +667,21 @@ private fun HomeScreen(accent: Color, onMenu: () -> Unit, onSearch: () -> Unit, 
                 }
             }
         }
-        item { Spacer(Modifier.height(48.dp)) }
+            item { Spacer(Modifier.height(48.dp)) }
+        }
+        Surface(color = Surface2, shadowElevation = 4.dp,
+            modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth()) {
+            Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 8.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onMenu) { Icon(Icons.Default.Menu, null, tint = TextPri) }
+                Column(Modifier.weight(1f).padding(horizontal = 4.dp)) {
+                    Text("Mangalore", color = TextPri, fontSize = 22.sp,
+                        fontWeight = FontWeight.ExtraBold, letterSpacing = (-0.5).sp)
+                    Text("مانجا · مانهوا · كوميك", color = TextSec, fontSize = 10.sp)
+                }
+                IconButton(onSearch) { Icon(Icons.Default.Search, null, tint = TextPri) }
+            }
+        }
     }
 }
 
@@ -1100,7 +1142,10 @@ private fun ReaderScreen(
                     itemsIndexed(images, key = { imageIndex, url -> "$index-$imageIndex-$url" }) { _, url ->
                         SubcomposeAsyncImage(
                             model = ImageRequest.Builder(LocalContext.current).data(url)
-                                .addHeader("Referer","https://mangalik.net/").crossfade(true).build(),
+                                .addHeader("Referer", "https://mangalik.net/")
+                                .addHeader("User-Agent", "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/124.0.0.0")
+                                .apply { if (CookieStore.has()) addHeader("Cookie", CookieStore.cfCookies) }
+                                .crossfade(true).build(),
                             contentDescription = null, contentScale = ContentScale.FillWidth,
                             modifier = Modifier.fillMaxWidth(),
                             loading = {
@@ -1342,43 +1387,6 @@ private fun SettingsScreen(accent:Color, amoled:Boolean, onAmoled:(Boolean)->Uni
 // ══════════════════════════════════════════════════════════════
 // DRAWER
 // ══════════════════════════════════════════════════════════════
-@Composable
-private fun BottomNav(cur: Dest, accent: Color, onNavigate: (Dest) -> Unit) {
-    val selected = when (cur) {
-        is Dest.Search -> 1
-        is Dest.Library -> 2
-        is Dest.History -> 3
-        else -> 0
-    }
-    NavigationBar(
-        modifier = Modifier.navigationBarsPadding(),
-        containerColor = Surface2,
-        tonalElevation = 12.dp
-    ) {
-        val items = listOf(
-            Triple("الرئيسية", Icons.Default.Home, Dest.Home),
-            Triple("البحث", Icons.Default.Search, Dest.Search),
-            Triple("مكتبتي", Icons.Default.LibraryBooks, Dest.Library),
-            Triple("السجل", Icons.Default.History, Dest.History)
-        )
-        items.forEachIndexed { index, (label, icon, destination) ->
-            NavigationBarItem(
-                selected = selected == index,
-                onClick = { if (selected != index) onNavigate(destination) },
-                icon = { Icon(icon, contentDescription = label) },
-                label = { Text(label, fontSize = 10.sp) },
-                colors = NavigationBarItemDefaults.colors(
-                    selectedIconColor = accent,
-                    selectedTextColor = accent,
-                    indicatorColor = accent.copy(alpha = .14f),
-                    unselectedIconColor = TextSec,
-                    unselectedTextColor = TextSec
-                )
-            )
-        }
-    }
-}
-
 @Composable
 private fun Drawer(accent:Color, cur:Dest, onClose:()->Unit, onNav:(String)->Unit) {
     Box(Modifier.fillMaxSize().background(Color.Black.copy(.65f)).pointerInput(Unit){detectTapGestures{onClose()}}) {
