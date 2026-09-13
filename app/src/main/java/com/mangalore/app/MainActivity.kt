@@ -183,6 +183,13 @@ private fun App() {
                 }
 
                 // ── Drawer ────────────────────────────────────
+                if (drawer) {
+                    Box(
+                        Modifier.fillMaxSize()
+                            .background(Color.Black.copy(.65f))
+                            .pointerInput(Unit) { detectTapGestures { drawer = false } }
+                    )
+                }
                 AnimatedVisibility(drawer,
                     enter = fadeIn(tween(180)) + slideInHorizontally(
                         spring(Spring.DampingRatioNoBouncy, Spring.StiffnessMediumLow)) { it },
@@ -539,7 +546,8 @@ private fun HomeScreen(accent: Color, onMenu: () -> Unit, onSearch: () -> Unit, 
                             ) {
                                 Icon(Icons.Default.PlayArrow, null, Modifier.size(15.dp))
                                 Spacer(Modifier.width(5.dp))
-                                Text("ابدأ القراءة", fontSize = 13.sp, color = Color.White)
+                                Text("ابدأ القراءة", fontSize = 13.sp, color = Color.White,
+                                    fontFamily = Font)
                             }
                         }
                     }
@@ -711,7 +719,9 @@ private fun SearchScreen(accent: Color, onBack: () -> Unit, onPick: (MangaItem) 
                 TopBar("البحث", accent, onBack)
                 OutlinedTextField(
                     value = q, onValueChange = { q = it },
-                    placeholder = { Text("ابحث عن مانجا أو مانهوا...", color = TextDim, fontSize = 13.sp) },
+                    textStyle = LocalTextStyle.current.copy(fontFamily = Font),
+                    placeholder = { Text("ابحث عن مانجا أو مانهوا...", color = TextDim, fontSize = 13.sp,
+                        fontFamily = Font) },
                     leadingIcon = {
                         if (loading) CircularProgressIndicator(Modifier.size(18.dp), color = accent, strokeWidth = 2.dp)
                         else Icon(Icons.Default.Search, null, tint = TextSec)
@@ -926,7 +936,7 @@ private fun DetailScreen(
                             shape = RoundedCornerShape(10.dp)) {
                             Icon(Icons.Default.PlayArrow, null, Modifier.size(16.dp))
                             Spacer(Modifier.width(4.dp))
-                            Text("ابدأ القراءة", fontSize = 13.sp)
+                            Text("ابدأ القراءة", fontSize = 13.sp, fontFamily = Font)
                         }
                         if (d.chapters.size > 1) {
                                 Button({ onChapter(d.chapters.first(), 0) }, Modifier.wrapContentWidth(),
@@ -934,7 +944,7 @@ private fun DetailScreen(
                                 shape = RoundedCornerShape(10.dp)) {
                                 Icon(Icons.Default.LastPage, null, Modifier.size(16.dp))
                                 Spacer(Modifier.width(4.dp))
-                                Text("آخر فصل", fontSize = 13.sp, color = TextPri)
+                                Text("آخر فصل", fontSize = 13.sp, color = TextPri, fontFamily = Font)
                             }
                         }
                     }
@@ -1389,7 +1399,7 @@ private fun SettingsScreen(accent:Color, amoled:Boolean, onAmoled:(Boolean)->Uni
 // ══════════════════════════════════════════════════════════════
 @Composable
 private fun Drawer(accent:Color, cur:Dest, onClose:()->Unit, onNav:(String)->Unit) {
-    Box(Modifier.fillMaxSize().background(Color.Black.copy(.65f)).pointerInput(Unit){detectTapGestures{onClose()}}) {
+    Box(Modifier.fillMaxSize()) {
         Surface(Modifier.fillMaxHeight().width(296.dp).align(Alignment.CenterStart).pointerInput(Unit){detectTapGestures{}},
             color=Bg, shadowElevation=24.dp) {
             Column(Modifier.fillMaxSize()) {
