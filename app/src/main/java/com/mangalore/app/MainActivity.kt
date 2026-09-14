@@ -103,8 +103,10 @@ private sealed class Dest {
     object Settings : Dest()
     data class Detail(val item: MangaItem) : Dest()
     data class DetailFull(val d: MangaDetail) : Dest()
-    data class Reader(val url: String, val chTitle: String, val manga: MangaDetail, val chapterIndex: Int) : Dest()
+    data class Reader(val url: String, val chTitle: String, val manga: MangaDetail, val chapterIndex: Int, val page: Int = 1) : Dest()
 }
+
+data class ReadingProgress(val item: MangaItem, val manga: MangaDetail, val chapterIndex: Int, val page: Int = 1, val totalPages: Int = 0, val completed: Boolean = false)
 
 // ══════════════════════════════════════════════════════════════
 // ENTRY
@@ -130,7 +132,7 @@ private fun App() {
     var drawer  by remember { mutableStateOf(false) }
 
     val lib     = remember { mutableStateListOf<MangaItem>() }
-    val hist    = remember { mutableStateListOf<Triple<MangaItem, String, String>>() } // item, chNum, chTitle
+    var hist by remember { mutableStateOf(listOf<ReadingProgress>()) }
 
     var showCf  by remember { mutableStateOf(false) }
     var toast   by remember { mutableStateOf("") }
@@ -168,7 +170,7 @@ private fun App() {
                         is Dest.Home -> HomeScreen(accent, { drawer = true }, { push(Dest.Search) }) { push(Dest.Detail(it)) }
                         is Dest.Search -> SearchScreen(accent, ::pop) { push(Dest.Detail(it)) }
                         is Dest.Library -> LibraryScreen(accent, lib, ::pop, { push(Dest.Detail(it)) }) { lib.remove(it) }
-                        is Dest.History -> HistoryScreen(accent, hist, ::pop, { push(Dest.Detail(it.first)) }) { hist.clear() }
+                        is Dest.History -> HistoryScreen(accent, hist, ::pop, { p -> push(Dest.Reader(p.manga.chapters[p.chapterIndex].url, "الفصل ${p.manga.chapters[p.chapterIndex].number}", p.manga, p.chapterIndex, p.page)) }) { hist = emptyList() }
                         is Dest.Profile -> ProfileScreen(accent, ::pop)
                         is Dest.Settings -> SettingsScreen(accent, amoled, { amoled = it }, { accent = it }, ::pop)
                         is Dest.Detail -> DetailLoadingScreen(d.item, accent, lib, ::pop) { replaceTop(Dest.DetailFull(it)) }
@@ -176,13 +178,13 @@ private fun App() {
                             d.d, accent, lib, ::pop,
                             onChapter = { ch, index ->
                                 val asItem = MangaItem(d.d.slug, d.d.title, d.d.slug, d.d.coverUrl, d.d.coverFull, d.d.url)
-                                hist.removeAll { it.third == ch.url }
-                                hist.add(0, Triple(asItem, ch.number, ch.url))
-                                push(Dest.Reader(ch.url, ch.title.ifEmpty { "الفصل ${ch.number}" }, d.d, index))
+                                hist = listOf(ReadingProgress(asItem, d.d, index)) + hist.filterNot { it.manga.url == d.d.url && it.chapterIndex == index }
+                                push(Dest.Reader(ch.url, ch.title.ifEmpty { "الفصل ${ch.number}" }, d.d, index, 1))
                             }
                         )
                         is Dest.Reader -> ReaderScreen(
-                            d.url, d.chTitle, d.manga, d.chapterIndex, accent, ::pop,
+                            d.url, d.chTitle, d.manga, d.chapterIndex, accent, ::pop, d.page,
+                            onProgress = { page, total, completed -> hist = hist.map { p -> if (p.manga.url == d.manga.url && p.chapterIndex == d.chapterIndex) p.copy(page = page, totalPages = total, completed = completed) else p } },
                             onCfNeeded = { showCf = true }
                         )
                     }
@@ -436,7 +438,7 @@ private fun HomeScreen(accent: Color, onMenu: () -> Unit, onSearch: () -> Unit, 
                     verticalArrangement   = Arrangement.spacedBy(14.dp)) {
                     items(12) {
                         Column {
-                            Box(Modifier.fillMaxWidth().height(CoverHeightSm).clip(RoundedCornerShape(12.dp)).background(shimmer()))
+                            Box(Modifier.fillMaxWidth().aspectRatio(CoverAspect).clip(RoundedCornerShape(12.dp)).background(shimmer()))
                             Spacer(Modifier.height(6.dp))
                             Box(Modifier.fillMaxWidth(.8f).height(12.dp).clip(RoundedCornerShape(4.dp)).background(shimmer()))
                             Spacer(Modifier.height(4.dp))
@@ -657,7 +659,7 @@ private fun HomeScreen(accent: Color, onMenu: () -> Unit, onSearch: () -> Unit, 
                 items(list.drop(1), key = { it.id }) { m ->
                     SpringCard({ onPick(m) }) {
                         Column {
-                            Box(Modifier.fillMaxWidth().height(CoverHeightSm).clip(RoundedCornerShape(12.dp))) {
+                            Box(Modifier.fillMaxWidth().aspectRatio(CoverAspect).clip(RoundedCornerShape(12.dp))) {
                                 Img(m.coverUrl, Modifier.fillMaxSize())
                                 // Chapter badge
                                 if (m.latestChapter.isNotEmpty()) {
@@ -763,7 +765,7 @@ private fun SearchScreen(accent: Color, onBack: () -> Unit, onPick: (MangaItem) 
                         FilterChip(sel,
                             { activeCat = if (sel) null else cat
                               if (!sel) search(cat) else { res = emptyList(); sub = "" } },
-                            label = { Text(cat, fontSize = 12.sp) },
+                            label = { Text(cat, fontSize = 12.sp, fontFamily = Font) },
                             colors = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = accent, selectedLabelColor = Color.White,
                                 containerColor = Surface3, labelColor = TextSec),
@@ -779,7 +781,7 @@ private fun SearchScreen(accent: Color, onBack: () -> Unit, onPick: (MangaItem) 
                 verticalArrangement   = Arrangement.spacedBy(14.dp)) {
                 items(12) {
                     Column {
-                        Box(Modifier.fillMaxWidth().height(CoverHeightSm).clip(RoundedCornerShape(12.dp)).background(shimmer()))
+                        Box(Modifier.fillMaxWidth().aspectRatio(CoverAspect).clip(RoundedCornerShape(12.dp)).background(shimmer()))
                         Spacer(Modifier.height(6.dp))
                         Box(Modifier.fillMaxWidth(.8f).height(11.dp).clip(RoundedCornerShape(4.dp)).background(shimmer()))
                     }
@@ -798,7 +800,7 @@ private fun SearchScreen(accent: Color, onBack: () -> Unit, onPick: (MangaItem) 
                 items(res, key = { it.id }) { m ->
                     SpringCard({ onPick(m) }) {
                         Column {
-                            Box(Modifier.fillMaxWidth().height(CoverHeightSm).clip(RoundedCornerShape(12.dp))) {
+                            Box(Modifier.fillMaxWidth().aspectRatio(CoverAspect).clip(RoundedCornerShape(12.dp))) {
                                 Img(m.coverUrl, Modifier.fillMaxSize())
                             }
                             Spacer(Modifier.height(6.dp))
@@ -1037,9 +1039,9 @@ private fun DetailScreen(
                 Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 6.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FilterChip(selected = newestFirst, onClick = { newestFirst = true },
-                        label = { Text("الأحدث") }, leadingIcon = { Icon(Icons.Default.ArrowDownward, null) })
+                        label = { Text("الأحدث", fontFamily = Font) }, leadingIcon = { Icon(Icons.Default.ArrowDownward, null) })
                     FilterChip(selected = !newestFirst, onClick = { newestFirst = false },
-                        label = { Text("الأقدم") }, leadingIcon = { Icon(Icons.Default.ArrowUpward, null) })
+                        label = { Text("الأقدم", fontFamily = Font) }, leadingIcon = { Icon(Icons.Default.ArrowUpward, null) })
                 }
             }
             val orderedChapters = if (newestFirst) d.chapters.asReversed() else d.chapters
@@ -1083,7 +1085,8 @@ private fun DetailScreen(
 @Composable
 private fun ReaderScreen(
     chUrl: String, chTitle: String, manga: MangaDetail, chapterIndex: Int,
-    accent: Color, onBack: () -> Unit, onCfNeeded: () -> Unit
+    accent: Color, onBack: () -> Unit, initialPage: Int = 1,
+    onProgress: (Int, Int, Boolean) -> Unit, onCfNeeded: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
     var blocks by remember { mutableStateOf<List<Pair<Int, List<String>>>>(emptyList()) }
@@ -1129,6 +1132,8 @@ private fun ReaderScreen(
     }
     fun retry() { blocks = emptyList(); loadedIndices = emptySet(); failedImageUrls = emptySet(); loadChapter(chapterIndex, true) }
     LaunchedEffect(chUrl) { retry() }
+    LaunchedEffect(state, initialPage) { if (state == 1 && initialPage > 1) listState.scrollToItem(initialPage.coerceAtMost((listState.layoutInfo.totalItemsCount - 1).coerceAtLeast(0))) }
+    LaunchedEffect(currentPage, totalPages, state) { if (state == 1 && totalPages > 0) onProgress(currentPage, totalPages, currentPage >= totalPages) }
     LaunchedEffect(autoScrollEnabled, autoScrollSpeed) {
         if (!autoScrollEnabled) return@LaunchedEffect
         val delayMs = when (autoScrollSpeed) { 1 -> 120L; 2 -> 80L; 3 -> 50L; 4 -> 25L; else -> 12L }
@@ -1156,7 +1161,29 @@ private fun ReaderScreen(
         }
         AnimatedVisibility(bars && state == 1, enter = fadeIn(), exit = fadeOut(), label = "reader-bottom", modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()) { Surface(color = Color.Black.copy(.92f)) { Row(Modifier.navigationBarsPadding().padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) { Text("تمرير تلقائي", color = Color.White, fontSize = 12.sp, modifier = Modifier.weight(1f)); IconButton(onClick = { autoScrollEnabled = !autoScrollEnabled }) { Icon(if (autoScrollEnabled) Icons.Default.Pause else Icons.Default.PlayArrow, null, tint = accent) }; IconButton(onClick = { showSpeedPicker = !showSpeedPicker }) { Icon(Icons.Default.Timer, null, tint = Color.White) }; if (failedImageUrls.isNotEmpty()) IconButton(onClick = { retry() }) { Icon(Icons.Default.Sync, "إعادة الجلب", tint = Red) } } } }
         if (showSpeedPicker) Surface(Modifier.align(Alignment.BottomCenter).padding(bottom = 62.dp), color = Surface3, shape = RoundedCornerShape(12.dp)) { Row(Modifier.padding(8.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) { (1..5).forEach { speed -> FilterChip(autoScrollSpeed == speed, { autoScrollSpeed = speed; showSpeedPicker = false }, label = { Text("$speed") }) } } }
-        if (showChapterList) AlertDialog(onDismissRequest = { showChapterList = false }, title = { Text("قائمة الفصول") }, text = { LazyColumn { itemsIndexed(manga.chapters) { i, ch -> ListItem(headlineContent = { Text("الفصل ${ch.number}") }, supportingContent = { if (ch.title.isNotEmpty()) Text(ch.title) }, trailingContent = { if (i in loadedIndices) Icon(Icons.Default.CheckCircle, null, tint = Green) }, modifier = Modifier.clickable { showChapterList = false; loadChapter(i, true) }) } } }, confirmButton = { TextButton({ showChapterList = false }) { Text("إغلاق") } })
+        if (showChapterList) {
+            var newestFirst by remember { mutableStateOf(true) }
+            ModalBottomSheet(onDismissRequest = { showChapterList = false }, containerColor = Color.Black, contentColor = Color.White, dragHandle = { BottomSheetDefaults.DragHandle(color = TextDim) }) {
+                Column(Modifier.fillMaxWidth().padding(bottom = 20.dp)) {
+                    Text("قائمة الفصول", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold, fontFamily = Font, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
+                    Row(Modifier.padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(newestFirst, { newestFirst = true }, label = { Text("الأحدث", fontFamily = Font) }, leadingIcon = { Icon(Icons.Default.ArrowDownward, null) })
+                        FilterChip(!newestFirst, { newestFirst = false }, label = { Text("الأقدم", fontFamily = Font) }, leadingIcon = { Icon(Icons.Default.ArrowUpward, null) })
+                    }
+                    LazyColumn(Modifier.heightIn(max = 520.dp)) {
+                        val chapters = if (newestFirst) manga.chapters.asReversed() else manga.chapters
+                        itemsIndexed(chapters) { _, ch ->
+                            val i = manga.chapters.indexOf(ch)
+                            Row(Modifier.fillMaxWidth().clickable { showChapterList = false; loadChapter(i, true) }.padding(horizontal = 20.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) { Text("الفصل ${ch.number}", color = Color.White, fontSize = 14.sp, fontFamily = Font); if (ch.title.isNotEmpty()) Text(ch.title, color = Color.White.copy(.62f), fontSize = 11.sp, fontFamily = Font) }
+                                if (i in loadedIndices) Icon(Icons.Default.CheckCircle, null, tint = Green, modifier = Modifier.size(18.dp))
+                            }
+                            HorizontalDivider(color = Color.White.copy(.10f))
+                        }
+                    }
+                }
+            }
+        }
         if (state != 1) BackBtn(onBack, Modifier.statusBarsPadding().padding(4.dp))
     }
 }
@@ -1181,7 +1208,7 @@ private fun LibraryScreen(accent:Color, items:List<MangaItem>, onBack:()->Unit,
                 items(items, key={it.id}) { m ->
                     SpringCard({ onPick(m) }) {
                         Column {
-                            Box(Modifier.fillMaxWidth().height(CoverHeightSm).clip(RoundedCornerShape(12.dp))) {
+                            Box(Modifier.fillMaxWidth().aspectRatio(CoverAspect).clip(RoundedCornerShape(12.dp))) {
                                 Img(m.coverUrl, Modifier.fillMaxSize())
                                 IconButton({ onRemove(m) }, Modifier.align(Alignment.TopEnd).size(28.dp)) {
                                     Surface(color = Color.Black.copy(.6f), shape = CircleShape) {
@@ -1205,8 +1232,8 @@ private fun LibraryScreen(accent:Color, items:List<MangaItem>, onBack:()->Unit,
 // HISTORY
 // ══════════════════════════════════════════════════════════════
 @Composable
-private fun HistoryScreen(accent:Color, hist:List<Triple<MangaItem,String,String>>,
-    onBack:()->Unit, onPick:(Triple<MangaItem,String,String>)->Unit, onClear:()->Unit) {
+private fun HistoryScreen(accent:Color, hist:List<ReadingProgress>,
+    onBack:()->Unit, onPick:(ReadingProgress)->Unit, onClear:()->Unit) {
     Column(Modifier.fillMaxSize()) {
         TopBar("سجل القراءة", accent, onBack, action = {
             if (hist.isNotEmpty()) TextButton(onClear) { Text("مسح الكل", color=Red, fontSize=13.sp) }
@@ -1226,7 +1253,8 @@ private fun HistoryScreen(accent:Color, hist:List<Triple<MangaItem,String,String
                             Text(h.first.title, color=TextPri, fontSize=14.sp, maxLines=1,
                                 overflow=TextOverflow.Ellipsis, fontWeight=FontWeight.Medium)
                             Spacer(Modifier.height(3.dp))
-                            Text("الفصل ${h.second}", color=accent, fontSize=12.sp)
+                            Text("الفصل ${h.manga.chapters[h.chapterIndex].number} · الصفحة ${h.page}", color=accent, fontSize=12.sp, fontFamily = Font)
+                            if (h.completed) Text("تمت المشاهدة", color = Green, fontSize = 10.sp, fontFamily = Font)
                         }
                         Icon(Icons.Default.ChevronLeft, null, tint=TextDim, modifier=Modifier.size(17.dp))
                     }
