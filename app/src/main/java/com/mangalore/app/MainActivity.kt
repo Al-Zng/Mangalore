@@ -1082,6 +1082,7 @@ private fun DetailScreen(
 // ══════════════════════════════════════════════════════════════
 // READER
 // ══════════════════════════════════════════════════════════════
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ReaderScreen(
     chUrl: String, chTitle: String, manga: MangaDetail, chapterIndex: Int,
@@ -1247,10 +1248,10 @@ private fun HistoryScreen(accent:Color, hist:List<ReadingProgress>,
                         verticalAlignment=Alignment.CenterVertically,
                         horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                         Box(Modifier.width(56.dp).height(80.dp).clip(RoundedCornerShape(10.dp))) {
-                            Img(h.first.coverUrl, Modifier.fillMaxSize())
+                            Img(h.item.coverUrl, Modifier.fillMaxSize())
                         }
                         Column(Modifier.weight(1f)) {
-                            Text(h.first.title, color=TextPri, fontSize=14.sp, maxLines=1,
+                            Text(h.item.title, color=TextPri, fontSize=14.sp, maxLines=1,
                                 overflow=TextOverflow.Ellipsis, fontWeight=FontWeight.Medium)
                             Spacer(Modifier.height(3.dp))
                             Text("الفصل ${h.manga.chapters[h.chapterIndex].number} · الصفحة ${h.page}", color=accent, fontSize=12.sp, fontFamily = Font)
