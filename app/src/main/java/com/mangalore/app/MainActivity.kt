@@ -40,7 +40,10 @@ import androidx.compose.ui.viewinterop.AndroidView
 import coil.compose.AsyncImage
 import coil.compose.SubcomposeAsyncImage
 import coil.request.ImageRequest
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
+import androidx.compose.runtime.snapshotFlow
 
 // ══════════════════════════════════════════════════════════════
 // TOKENS
@@ -66,6 +69,18 @@ private val Palette = listOf(
     Color(0xFFBF9F6B), Color(0xFF9F6BBF), Color(0xFFBF6B9F), Color(0xFF6BBF9F),
     Color(0xFF9FBF6B), Color(0xFFBF8B6B),
 )
+
+// Standard manga cover sizes (2:3 ratio)
+private val CoverAspect = 2f / 3f
+private val CoverHeightXs = 124.dp
+private val CoverWidthXs = 88.dp
+private val CoverHeightSm = 155.dp
+private val CoverHeightMd = 158.dp
+private val CoverWidthMd = 108.dp
+private val CoverHeightHero = 148.dp
+private val CoverWidthHero = 102.dp
+private val CoverHeightCh = 68.dp
+private val CoverWidthCh = 46.dp
 
 private val Font = FontFamily(
     androidx.compose.ui.text.font.Font(R.font.readex_pro_light,    FontWeight.Light),
@@ -420,7 +435,7 @@ private fun HomeScreen(accent: Color, onMenu: () -> Unit, onSearch: () -> Unit, 
                     verticalArrangement   = Arrangement.spacedBy(14.dp)) {
                     items(12) {
                         Column {
-                            Box(Modifier.fillMaxWidth().height(175.dp).clip(RoundedCornerShape(12.dp)).background(shimmer()))
+                            Box(Modifier.fillMaxWidth().height(CoverHeightSm).clip(RoundedCornerShape(12.dp)).background(shimmer()))
                             Spacer(Modifier.height(6.dp))
                             Box(Modifier.fillMaxWidth(.8f).height(12.dp).clip(RoundedCornerShape(4.dp)).background(shimmer()))
                             Spacer(Modifier.height(4.dp))
@@ -493,7 +508,7 @@ private fun HomeScreen(accent: Color, onMenu: () -> Unit, onSearch: () -> Unit, 
                         // RIGHT side (RTL first = right) — Cover thumbnail card
                         Box(
                             Modifier
-                                .width(102.dp).height(148.dp)
+                                .width(CoverWidthHero).height(CoverHeightHero)
                                 .clip(RoundedCornerShape(14.dp))
                                 .shadow(12.dp, RoundedCornerShape(14.dp))
                                 .border(1.5.dp, Color.White.copy(.15f), RoundedCornerShape(14.dp))
@@ -600,8 +615,8 @@ private fun HomeScreen(accent: Color, onMenu: () -> Unit, onSearch: () -> Unit, 
                         horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         items(list.take(10).drop(1), key = { "qs-${it.id}" }) { m ->
                             SpringCard({ onPick(m) }) {
-                                Column(Modifier.width(90.dp)) {
-                                    Box(Modifier.size(90.dp).clip(RoundedCornerShape(12.dp))) {
+                                Column(Modifier.width(CoverWidthXs)) {
+                                    Box(Modifier.size(CoverWidthXs, CoverHeightXs).clip(RoundedCornerShape(12.dp))) {
                                         Img(m.coverUrl, Modifier.fillMaxSize())
                                         if (m.latestChapter.isNotEmpty()) {
                                             Surface(color = Color.Black.copy(.7f), shape = RoundedCornerShape(topStart=7.dp),
@@ -641,7 +656,7 @@ private fun HomeScreen(accent: Color, onMenu: () -> Unit, onSearch: () -> Unit, 
                 items(list.drop(1), key = { it.id }) { m ->
                     SpringCard({ onPick(m) }) {
                         Column {
-                            Box(Modifier.fillMaxWidth().height(170.dp).clip(RoundedCornerShape(12.dp))) {
+                            Box(Modifier.fillMaxWidth().height(CoverHeightSm).clip(RoundedCornerShape(12.dp))) {
                                 Img(m.coverUrl, Modifier.fillMaxSize())
                                 // Chapter badge
                                 if (m.latestChapter.isNotEmpty()) {
@@ -763,7 +778,7 @@ private fun SearchScreen(accent: Color, onBack: () -> Unit, onPick: (MangaItem) 
                 verticalArrangement   = Arrangement.spacedBy(14.dp)) {
                 items(12) {
                     Column {
-                        Box(Modifier.fillMaxWidth().height(170.dp).clip(RoundedCornerShape(12.dp)).background(shimmer()))
+                        Box(Modifier.fillMaxWidth().height(CoverHeightSm).clip(RoundedCornerShape(12.dp)).background(shimmer()))
                         Spacer(Modifier.height(6.dp))
                         Box(Modifier.fillMaxWidth(.8f).height(11.dp).clip(RoundedCornerShape(4.dp)).background(shimmer()))
                     }
@@ -782,7 +797,7 @@ private fun SearchScreen(accent: Color, onBack: () -> Unit, onPick: (MangaItem) 
                 items(res, key = { it.id }) { m ->
                     SpringCard({ onPick(m) }) {
                         Column {
-                            Box(Modifier.fillMaxWidth().height(170.dp).clip(RoundedCornerShape(12.dp))) {
+                            Box(Modifier.fillMaxWidth().height(CoverHeightSm).clip(RoundedCornerShape(12.dp))) {
                                 Img(m.coverUrl, Modifier.fillMaxSize())
                             }
                             Spacer(Modifier.height(6.dp))
@@ -900,7 +915,7 @@ private fun DetailScreen(
                     horizontalArrangement = Arrangement.spacedBy(14.dp)) {
 
                     // Cover (right in RTL = first)
-                    Box(Modifier.width(108.dp).height(158.dp).clip(RoundedCornerShape(12.dp))
+                    Box(Modifier.width(CoverWidthMd).height(CoverHeightMd).clip(RoundedCornerShape(12.dp))
                         .shadow(12.dp, RoundedCornerShape(12.dp))
                         .border(1.5.dp, Color.White.copy(.15f), RoundedCornerShape(12.dp))) {
                         Img(d.coverFull.ifEmpty { d.coverUrl }, Modifier.fillMaxSize())
@@ -998,11 +1013,12 @@ private fun DetailScreen(
                 Surface(color = Surface2, shape = RoundedCornerShape(14.dp),
                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)) {
                     Column {
-                        if (d.author.isNotEmpty())      IRow("المؤلف", d.author)
-                        if (d.artist.isNotEmpty())      IRow("الرسام", d.artist)
-                        if (d.origin.isNotEmpty())      IRow("النوع", d.origin)
-                        if (d.releaseYear.isNotEmpty()) IRow("السنة", d.releaseYear)
-                        if (d.status.isNotEmpty())      IRow("الحالة", d.status, last = true)
+                        val na = "غير متوفر"
+                        IRow("المؤلف", d.author.ifEmpty { na }, dimValue = d.author.isEmpty())
+                        IRow("الرسام", d.artist.ifEmpty { na }, dimValue = d.artist.isEmpty())
+                        IRow("النوع", d.origin.ifEmpty { na }, dimValue = d.origin.isEmpty())
+                        IRow("السنة", d.releaseYear.ifEmpty { na }, dimValue = d.releaseYear.isEmpty())
+                        IRow("الحالة", d.status.ifEmpty { na }, last = true, dimValue = d.status.isEmpty())
                     }
                 }
             }
@@ -1037,9 +1053,14 @@ private fun DetailScreen(
                     Row(Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Box(Modifier.size(42.dp).clip(RoundedCornerShape(10.dp)).background(accent.copy(.15f)),
-                            Alignment.Center) {
-                            Text(ch.number, color = accent, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Box(Modifier.width(CoverWidthCh).height(CoverHeightCh).clip(RoundedCornerShape(8.dp))) {
+                            Img(d.coverUrl, Modifier.fillMaxSize())
+                            Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth()
+                                .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(.82f))))
+                                .padding(bottom = 3.dp, top = 8.dp), Alignment.Center) {
+                                Text(ch.number, color = Color.White, fontSize = 9.sp,
+                                    fontWeight = FontWeight.ExtraBold, maxLines = 1)
+                            }
                         }
                         Column(Modifier.weight(1f)) {
                             Text(ch.title.ifEmpty { "الفصل ${ch.number}" }, color = TextPri, fontSize = 14.sp,
@@ -1061,154 +1082,80 @@ private fun DetailScreen(
 @Composable
 private fun ReaderScreen(
     chUrl: String, chTitle: String, manga: MangaDetail, chapterIndex: Int,
-    accent: Color, onBack: () -> Unit,
-    onCfNeeded: () -> Unit
+    accent: Color, onBack: () -> Unit, onCfNeeded: () -> Unit
 ) {
-    val scope  = rememberCoroutineScope()
+    val scope = rememberCoroutineScope()
     var blocks by remember { mutableStateOf<List<Pair<Int, List<String>>>>(emptyList()) }
     var loadedIndices by remember { mutableStateOf<Set<Int>>(emptySet()) }
-    var state  by remember { mutableStateOf(0) } // 0=loading,1=ok,2=cf,3=err
-    var bars   by remember { mutableStateOf(true) }
+    var state by remember { mutableStateOf(0) }
+    var bars by remember { mutableStateOf(true) }
+    val listState = rememberLazyListState()
+    val currentPage by remember { derivedStateOf {
+        val visible = listState.firstVisibleItemIndex
+        var pages = 0
+        var headers = 0
+        for ((_, images) in blocks) {
+            for (i in images.indices) if (headers + pages + i + 1 >= visible) return@derivedStateOf maxOf(1, pages + i + 1)
+            pages += images.size; headers++
+        }
+        maxOf(1, pages)
+    } }
+    val totalPages by remember { derivedStateOf { blocks.sumOf { it.second.size } } }
+    var showChapterList by remember { mutableStateOf(false) }
+    var autoScrollEnabled by remember { mutableStateOf(false) }
+    var autoScrollSpeed by remember { mutableStateOf(3) }
+    var showSpeedPicker by remember { mutableStateOf(false) }
+    var failedImageUrls by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var retryingAll by remember { mutableStateOf(false) }
+    val displayedChapterNum = remember(blocks) { blocks.firstOrNull()?.first?.let { manga.chapters.getOrNull(it)?.number } ?: "" }
+    val displayedChapterTitle = remember(blocks) { blocks.firstOrNull()?.first?.let { i -> manga.chapters.getOrNull(i)?.let { c -> if (c.title.isNotEmpty() && c.title != "الفصل ${c.number}") c.title else "" } } ?: chTitle }
 
     fun loadChapter(index: Int, reset: Boolean = false) {
-        if (index !in manga.chapters.indices || index in loadedIndices) return
-        state = 0
+        if (index !in manga.chapters.indices || (!reset && index in loadedIndices)) return
+        if (reset) { state = 0; retryingAll = true }
         scope.launch {
-            val chapter = manga.chapters[index]
-            val (list, cf) = Scraper.fetchChapterImages(chapter.url)
+            val (images, cf) = Scraper.fetchChapterImages(manga.chapters[index].url)
             when {
-                cf -> state = 2
-                list.isEmpty() -> if (reset) state = 3
+                cf -> { state = 2; retryingAll = false }
+                images.isEmpty() -> { if (reset) state = 3; retryingAll = false }
                 else -> {
-                    blocks = if (reset) listOf(index to list) else blocks + (index to list)
-                    loadedIndices = loadedIndices + index
-                    state = 1
+                    blocks = if (reset) listOf(index to images) else blocks + (index to images)
+                    loadedIndices = if (reset) setOf(index) else loadedIndices + index
+                    state = 1; retryingAll = false; failedImageUrls = emptySet()
                 }
             }
         }
     }
-    fun retry() {
-        blocks = emptyList(); loadedIndices = emptySet(); loadChapter(chapterIndex, reset = true)
-    }
+    fun retry() { blocks = emptyList(); loadedIndices = emptySet(); failedImageUrls = emptySet(); loadChapter(chapterIndex, true) }
     LaunchedEffect(chUrl) { retry() }
+    LaunchedEffect(autoScrollEnabled, autoScrollSpeed) {
+        if (!autoScrollEnabled) return@LaunchedEffect
+        val delayMs = when (autoScrollSpeed) { 1 -> 120L; 2 -> 80L; 3 -> 50L; 4 -> 25L; else -> 12L }
+        while (autoScrollEnabled) { delay(delayMs); if (!listState.canScrollForward) autoScrollEnabled = false else listState.scrollBy(1f) }
+    }
 
     Box(Modifier.fillMaxSize().background(Black)) {
         when (state) {
-            0 -> Box(Modifier.fillMaxSize(), Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    CircularProgressIndicator(color = accent, modifier = Modifier.size(44.dp))
-                    Spacer(Modifier.height(14.dp))
-                    Text("جاري تحميل الفصل...", color = TextSec)
-                }
-            }
-            2 -> Box(Modifier.fillMaxSize(), Alignment.Center) {
-                Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Default.Security, null, tint = accent, modifier = Modifier.size(56.dp))
-                    Spacer(Modifier.height(16.dp))
-                    Text("مطلوب تحقق الأمان", color = TextPri, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-                    Spacer(Modifier.height(8.dp))
-                    Text("حل تحدي الأمان للوصول إلى الفصل", color = TextSec, textAlign = TextAlign.Center)
-                    Spacer(Modifier.height(24.dp))
-                    Button({ onCfNeeded() }, Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColors(containerColor = accent),
-                        shape = RoundedCornerShape(12.dp)) {
-                        Icon(Icons.Default.Security, null, Modifier.size(16.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text("حل التحقق", color = Color.White)
+            0 -> Box(Modifier.fillMaxSize(), Alignment.Center) { Column(horizontalAlignment = Alignment.CenterHorizontally) { CircularProgressIndicator(color = accent); Spacer(Modifier.height(14.dp)); Text("جاري تحميل الفصل...", color = TextSec) } }
+            2 -> Box(Modifier.fillMaxSize(), Alignment.Center) { Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) { Icon(Icons.Default.Security, null, tint = accent, modifier = Modifier.size(56.dp)); Spacer(Modifier.height(16.dp)); Text("مطلوب تحقق الأمان", color = TextPri, fontSize = 17.sp, fontWeight = FontWeight.Bold); Spacer(Modifier.height(8.dp)); Text("حل تحدي الأمان للوصول إلى الفصل", color = TextSec, textAlign = TextAlign.Center); Spacer(Modifier.height(24.dp)); Button(onCfNeeded, Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = accent)) { Text("حل التحقق", color = Color.White) }; Spacer(Modifier.height(10.dp)); OutlinedButton(onBack, Modifier.fillMaxWidth()) { Text("رجوع", color = TextSec) } } }
+            3 -> Box(Modifier.fillMaxSize(), Alignment.Center) { Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) { Icon(Icons.Default.CloudOff, null, tint = Red, modifier = Modifier.size(52.dp)); Text("تعذّر تحميل الفصل", color = TextSec); Button(::retry, colors = ButtonDefaults.buttonColors(containerColor = accent)) { Text("إعادة المحاولة", color = Color.White) } } }
+            else -> LazyColumn(state = listState, Modifier.fillMaxSize().clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { bars = !bars }) {
+                blocks.forEachIndexed { position, (index, images) ->
+                    item(key = "chapter-header-$index") { Box(Modifier.fillMaxWidth().background(Brush.horizontalGradient(listOf(accent.copy(.22f), accent.copy(.06f), Color.Transparent))).padding(horizontal = 16.dp, vertical = 14.dp)) { Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) { Box(Modifier.width(CoverWidthCh).height(CoverHeightCh).clip(RoundedCornerShape(8.dp))) { Img(manga.coverUrl, Modifier.fillMaxSize()); Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(.82f)))).padding(bottom = 3.dp, top = 8.dp), Alignment.Center) { Text(manga.chapters[index].number, color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold) } }; Column { Text("الفصل ${manga.chapters[index].number}", color = accent, fontSize = 15.sp, fontWeight = FontWeight.Bold); if (displayedChapterTitle.isNotEmpty()) Text(displayedChapterTitle, color = TextSec, fontSize = 12.sp) } } } }
+                    itemsIndexed(images, key = { i, url -> "$index-$i-$url" }) { _, url ->
+                        SubcomposeAsyncImage(model = ImageRequest.Builder(LocalContext.current).data(url).addHeader("Referer", "https://mangalik.net/").addHeader("User-Agent", "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/124.0.0.0").apply { if (CookieStore.has()) addHeader("Cookie", CookieStore.cfCookies) }.crossfade(true).build(), contentDescription = null, contentScale = ContentScale.FillWidth, modifier = Modifier.fillMaxWidth(), loading = { Box(Modifier.fillMaxWidth().height(270.dp), Alignment.Center) { CircularProgressIndicator(color = accent.copy(.5f), modifier = Modifier.size(30.dp), strokeWidth = 2.dp) } }, error = { failedImageUrls = failedImageUrls + url; Box(Modifier.fillMaxWidth().height(90.dp).background(Surface2), Alignment.Center) { Icon(Icons.Default.BrokenImage, null, tint = TextDim, modifier = Modifier.size(30.dp)) } })
                     }
-                    Spacer(Modifier.height(10.dp))
-                    OutlinedButton(onBack, Modifier.fillMaxWidth(),
-                        border = BorderStroke(1.dp, Border), shape = RoundedCornerShape(12.dp)) {
-                        Text("رجوع", color = TextSec)
-                    }
-                }
-            }
-            3 -> Box(Modifier.fillMaxSize(), Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Default.ErrorOutline, null, tint = Red, modifier = Modifier.size(48.dp))
-                    Spacer(Modifier.height(12.dp))
-                    Text("تعذّر تحميل الفصل", color = TextSec)
-                    Spacer(Modifier.height(16.dp))
-                    Button(::retry, colors = ButtonDefaults.buttonColors(containerColor = accent)) {
-                        Text("إعادة المحاولة", color = Color.White)
-                    }
-                }
-            }
-            else -> LazyColumn(
-                Modifier.fillMaxSize().clickable(indication=null,
-                    interactionSource=remember{MutableInteractionSource()}) { bars=!bars }
-            ) {
-                blocks.forEachIndexed { blockPosition, (index, images) ->
-                    item(key = "chapter-header-$index") {
-                        Surface(color = Surface2, modifier = Modifier.fillMaxWidth()) {
-                            Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                                Text("الفصل ${manga.chapters[index].number}", color = accent,
-                                    fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                                Text(manga.chapters[index].title.ifEmpty { "الفصل ${manga.chapters[index].number}" },
-                                    color = TextSec, fontSize = 12.sp)
-                            }
-                        }
-                    }
-                    itemsIndexed(images, key = { imageIndex, url -> "$index-$imageIndex-$url" }) { _, url ->
-                        SubcomposeAsyncImage(
-                            model = ImageRequest.Builder(LocalContext.current).data(url)
-                                .addHeader("Referer", "https://mangalik.net/")
-                                .addHeader("User-Agent", "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/124.0.0.0")
-                                .apply { if (CookieStore.has()) addHeader("Cookie", CookieStore.cfCookies) }
-                                .crossfade(true).build(),
-                            contentDescription = null, contentScale = ContentScale.FillWidth,
-                            modifier = Modifier.fillMaxWidth(),
-                            loading = {
-                                Box(Modifier.fillMaxWidth().height(270.dp), Alignment.Center) {
-                                    CircularProgressIndicator(color = accent.copy(.5f), modifier = Modifier.size(30.dp), strokeWidth = 2.dp)
-                                }
-                            },
-                            error = {
-                                Box(Modifier.fillMaxWidth().height(90.dp).background(Surface2), Alignment.Center) {
-                                    Icon(Icons.Default.BrokenImage, null, tint=TextDim, modifier=Modifier.size(30.dp))
-                                }
-                            }
-                        )
-                    }
-                    if (blockPosition == blocks.lastIndex) {
-                        item(key = "chapter-loader-$index") {
-                            LaunchedEffect(index, blocks.size) {
-                                val next = index - 1
-                                if (next in manga.chapters.indices) loadChapter(next)
-                            }
-                            if (index > 0) {
-                                Box(Modifier.fillMaxWidth().padding(18.dp), Alignment.Center) {
-                                    CircularProgressIndicator(color = accent, modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
-                                }
-                            } else {
-                                Text("انتهت الفصول", color = TextDim, modifier = Modifier.fillMaxWidth()
-                                    .padding(24.dp), textAlign = TextAlign.Center)
-                            }
-                        }
-                    }
+                    if (position == blocks.lastIndex) item(key = "chapter-loader-$index") { LaunchedEffect(index, blocks.size) { loadChapter(index - 1) }; if (index > 0) LinearProgressIndicator(Modifier.fillMaxWidth().padding(18.dp), color = accent) else Text("انتهت الفصول", color = TextDim, modifier = Modifier.fillMaxWidth().padding(24.dp), textAlign = TextAlign.Center) }
                 }
                 item { Spacer(Modifier.height(80.dp)) }
             }
         }
-
-        // Top bar
-        AnimatedVisibility(bars && state==1,
-            enter=fadeIn()+slideInVertically{-it}, exit=fadeOut()+slideOutVertically{-it}, label="rb") {
-            Surface(color = Color.Black.copy(.88f), modifier=Modifier.fillMaxWidth()) {
-                Row(Modifier.statusBarsPadding().padding(horizontal=4.dp, vertical=8.dp),
-                    verticalAlignment=Alignment.CenterVertically) {
-                    IconButton(onBack) { Icon(Icons.Default.ArrowForward, null, tint=Color.White) }
-                    Column(Modifier.weight(1f).padding(horizontal=4.dp)) {
-                        Text(manga.title, color=Color.White, fontSize=14.sp, fontWeight=FontWeight.Bold,
-                            maxLines=1, overflow=TextOverflow.Ellipsis)
-                        Text(chTitle, color=Color.White.copy(.7f), fontSize=12.sp)
-                    }
-                    if (blocks.isNotEmpty())
-                        Text("${blocks.sumOf { it.second.size }} ص", color=Color.White.copy(.6f), fontSize=12.sp,
-                            modifier=Modifier.padding(end=12.dp))
-                }
-            }
+        AnimatedVisibility(bars && state == 1, enter = fadeIn(tween(180)) + slideInVertically { -it }, exit = fadeOut(tween(140)) + slideOutVertically { -it }, label = "reader-top", modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth()) {
+            Surface(color = Color.Black.copy(.92f)) { Column { Row(Modifier.statusBarsPadding().padding(horizontal = 4.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) { IconButton(onBack) { Icon(Icons.Default.ArrowForward, null, tint = Color.White) }; Column(Modifier.weight(1f).padding(horizontal = 4.dp)) { Text(manga.title, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis); Text(if (displayedChapterNum.isNotEmpty()) "الفصل $displayedChapterNum${if (displayedChapterTitle.isNotEmpty()) " • $displayedChapterTitle" else ""}" else chTitle, color = Color.White.copy(.7f), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }; if (totalPages > 0) Text("$currentPage / $totalPages", color = Color.White, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 10.dp)); IconButton { showChapterList = true } { Icon(Icons.Default.List, "قائمة الفصول", tint = Color.White) } } } }
         }
+        AnimatedVisibility(bars && state == 1, enter = fadeIn(), exit = fadeOut(), label = "reader-bottom", modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()) { Surface(color = Color.Black.copy(.92f)) { Row(Modifier.navigationBarsPadding().padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) { Text("تمرير تلقائي", color = Color.White, fontSize = 12.sp, modifier = Modifier.weight(1f)); IconButton { autoScrollEnabled = !autoScrollEnabled } { Icon(if (autoScrollEnabled) Icons.Default.Pause else Icons.Default.PlayArrow, null, tint = accent) }; IconButton { showSpeedPicker = !showSpeedPicker } { Icon(Icons.Default.Timer, null, tint = Color.White) }; if (failedImageUrls.isNotEmpty()) IconButton { retry() } { Icon(Icons.Default.Sync, "إعادة الجلب", tint = Red) } } } }
+        if (showSpeedPicker) Surface(Modifier.align(Alignment.BottomCenter).padding(bottom = 62.dp), color = Surface3, shape = RoundedCornerShape(12.dp)) { Row(Modifier.padding(8.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) { (1..5).forEach { speed -> FilterChip(autoScrollSpeed == speed, { autoScrollSpeed = speed; showSpeedPicker = false }, label = { Text("$speed") }) } } }
+        if (showChapterList) AlertDialog(onDismissRequest = { showChapterList = false }, title = { Text("قائمة الفصول") }, text = { LazyColumn { itemsIndexed(manga.chapters) { i, ch -> ListItem(headlineContent = { Text("الفصل ${ch.number}") }, supportingContent = { if (ch.title.isNotEmpty()) Text(ch.title) }, trailingContent = { if (i in loadedIndices) Icon(Icons.Default.CheckCircle, null, tint = Green) }, modifier = Modifier.clickable { showChapterList = false; loadChapter(i, true) }) } } }, confirmButton = { TextButton({ showChapterList = false }) { Text("إغلاق") } })
         if (state != 1) BackBtn(onBack, Modifier.statusBarsPadding().padding(4.dp))
     }
 }
@@ -1233,7 +1180,7 @@ private fun LibraryScreen(accent:Color, items:List<MangaItem>, onBack:()->Unit,
                 items(items, key={it.id}) { m ->
                     SpringCard({ onPick(m) }) {
                         Column {
-                            Box(Modifier.fillMaxWidth().height(170.dp).clip(RoundedCornerShape(12.dp))) {
+                            Box(Modifier.fillMaxWidth().height(CoverHeightSm).clip(RoundedCornerShape(12.dp))) {
                                 Img(m.coverUrl, Modifier.fillMaxSize())
                                 IconButton({ onRemove(m) }, Modifier.align(Alignment.TopEnd).size(28.dp)) {
                                     Surface(color = Color.Black.copy(.6f), shape = CircleShape) {
@@ -1271,7 +1218,7 @@ private fun HistoryScreen(accent:Color, hist:List<Triple<MangaItem,String,String
                     Row(Modifier.fillMaxWidth().clickable { onPick(h) }.padding(14.dp),
                         verticalAlignment=Alignment.CenterVertically,
                         horizontalArrangement=Arrangement.spacedBy(12.dp)) {
-                        Box(Modifier.size(62.dp).clip(RoundedCornerShape(10.dp))) {
+                        Box(Modifier.width(56.dp).height(80.dp).clip(RoundedCornerShape(10.dp))) {
                             Img(h.first.coverUrl, Modifier.fillMaxSize())
                         }
                         Column(Modifier.weight(1f)) {
@@ -1512,10 +1459,10 @@ private fun SpringCard(onClick:()->Unit, content:@Composable ()->Unit) {
     }
 }
 
-@Composable private fun IRow(label:String, value:String, last:Boolean=false) {
+@Composable private fun IRow(label:String, value:String, last:Boolean=false, dimValue:Boolean=false) {
     Row(Modifier.fillMaxWidth().padding(horizontal=16.dp, vertical=11.dp), Arrangement.SpaceBetween) {
         Text(label, color=TextSec, fontSize=13.sp)
-        Text(value, color=TextPri, fontSize=13.sp, fontWeight=FontWeight.Medium,
+        Text(value, color=if (dimValue) TextDim else TextPri, fontSize=13.sp, fontWeight=if (dimValue) FontWeight.Normal else FontWeight.Medium,
             modifier=Modifier.padding(start=12.dp), textAlign=TextAlign.End)
     }
     if (!last) HorizontalDivider(modifier = Modifier.padding(horizontal=16.dp), color=Border, thickness = .5.dp)

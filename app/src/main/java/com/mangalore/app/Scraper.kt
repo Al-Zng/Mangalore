@@ -62,6 +62,11 @@ object CookieStore {
 // ─────────────────────────────────────────────────────────────
 object Scraper {
 
+    private fun cleanMeta(v: String): String {
+        val bad = setOf("updating", "n/a", "unknown", "-", "?", "تحديث", "جاري التحديث")
+        return if (v.trim().lowercase() in bad) "" else v.trim()
+    }
+
     private const val BASE = "https://mangalik.net"
     private const val IO   = "https://io.mangalik.net"
     // A chapter page that reliably triggers CF for the bypass flow
@@ -171,11 +176,11 @@ object Scraper {
             }?.selectFirst(".summary-content")?.text()?.trim() ?: ""
         }
 
-        val status = metaVal("الحالة", "Status", "Durum")
-        val author = metaVal("المؤلف", "Author", "Yazar")
-        val artist = metaVal("الرسام", "Artist", "Çizer")
-        val year   = metaVal("سنة", "Released", "Year")
-        val origin = metaVal("النوع", "Type", "Tür")
+        val status = cleanMeta(metaVal("الحالة", "Status", "Durum"))
+        val author = cleanMeta(metaVal("المؤلف", "Author", "Yazar"))
+        val artist = cleanMeta(metaVal("الرسام", "Artist", "Çizer"))
+        val year   = cleanMeta(metaVal("سنة", "Released", "Year"))
+        val origin = cleanMeta(metaVal("النوع", "Type", "Tür"))
 
         // Description - clean of links/tags
         val desc = doc.selectFirst(".description-summary .summary__content, .description-summary p, .manga-excerpt p")
