@@ -155,8 +155,16 @@ private fun App() {
             Box(Modifier.fillMaxSize().background(appBg)) {
 
                 // ── Screens ───────────────────────────────────
-                Box(Modifier.fillMaxSize()) {
-                    val d = cur
+                AnimatedContent(
+                    modifier = Modifier.fillMaxSize(),
+                    targetState = cur,
+                    transitionSpec = {
+                        val forward = stack.size > 1
+                        (fadeIn(tween(160)) + slideInHorizontally(tween(220)) { if (forward) it else -it }) togetherWith
+                            (fadeOut(tween(120)) + slideOutHorizontally(tween(220)) { if (forward) -it else it })
+                    },
+                    label = "rtl-screen-transition"
+                ) { d ->
                     when (d) {
                         is Dest.Home -> HomeScreen(accent, { drawer = true }, { push(Dest.Search) }) { push(Dest.Detail(it)) }
                         is Dest.Search -> SearchScreen(accent, ::pop) { push(Dest.Detail(it)) }
@@ -183,7 +191,6 @@ private fun App() {
                     }
                 }
 
-                }
                 if (cur is Dest.Reader && !CookieStore.cfSolved && !showCf) {
                     CfProbe(
                         onChallenge = { showCf = true },
@@ -203,7 +210,12 @@ private fun App() {
                             .pointerInput(Unit) { detectTapGestures { drawer = false } }
                     )
                 }
-                if (drawer) {
+                AnimatedVisibility(
+                    visible = drawer,
+                    enter = fadeIn(tween(120)) + slideInHorizontally(tween(220)) { it },
+                    exit = fadeOut(tween(100)) + slideOutHorizontally(tween(180)) { it },
+                    label = "rtl-drawer"
+                ) {
                     Drawer(accent, cur, { drawer = false }) { dest ->
                         when (dest) {
                             "home"     -> home()
@@ -1171,10 +1183,10 @@ private fun ReaderScreen(
                 item { Spacer(Modifier.height(80.dp)) }
             }
         }
-        if (bars && state == 1) {
+        AnimatedVisibility(bars && state == 1, enter = fadeIn(tween(140)) + slideInVertically(tween(160)) { -it }, exit = fadeOut(tween(100)) + slideOutVertically(tween(120)) { -it }, label = "reader-top-bar") {
             Surface(color = Color.Black.copy(.92f)) { Column { Row(Modifier.statusBarsPadding().padding(horizontal = 4.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) { IconButton(onBack) { Icon(Icons.Default.ArrowForward, null, tint = Color.White) }; Column(Modifier.weight(1f).padding(horizontal = 4.dp)) { Text(manga.title, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis); Text(if (displayedChapterNum.isNotEmpty()) "الفصل $displayedChapterNum${if (displayedChapterTitle.isNotEmpty()) " • $displayedChapterTitle" else ""}" else chTitle, color = Color.White.copy(.7f), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }; if (totalPages > 0) Text("$currentPage / $totalPages", color = Color.White, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 10.dp)); IconButton(onClick = { showChapterList = true }) { Icon(Icons.Default.List, "قائمة الفصول", tint = Color.White) } } } }
         }
-        if (bars && state == 1) { Surface(color = Color.Black.copy(.92f)) { Row(Modifier.navigationBarsPadding().padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) { Text("تمرير تلقائي", color = Color.White, fontSize = 12.sp, modifier = Modifier.weight(1f)); IconButton(onClick = { autoScrollEnabled = !autoScrollEnabled }) { Icon(if (autoScrollEnabled) Icons.Default.Pause else Icons.Default.PlayArrow, null, tint = accent) }; IconButton(onClick = { showSpeedPicker = !showSpeedPicker }) { Icon(Icons.Default.Timer, null, tint = Color.White) }; if (failedImageUrls.isNotEmpty()) IconButton(onClick = { retry() }) { Icon(Icons.Default.Sync, "إعادة الجلب", tint = Red) } } } }
+        AnimatedVisibility(bars && state == 1, enter = fadeIn(tween(140)) + slideInVertically(tween(160)) { it }, exit = fadeOut(tween(100)) + slideOutVertically(tween(120)) { it }, label = "reader-bottom-bar") { Surface(color = Color.Black.copy(.92f)) { Row(Modifier.navigationBarsPadding().padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) { Text("تمرير تلقائي", color = Color.White, fontSize = 12.sp, modifier = Modifier.weight(1f)); IconButton(onClick = { autoScrollEnabled = !autoScrollEnabled }) { Icon(if (autoScrollEnabled) Icons.Default.Pause else Icons.Default.PlayArrow, null, tint = accent) }; IconButton(onClick = { showSpeedPicker = !showSpeedPicker }) { Icon(Icons.Default.Timer, null, tint = Color.White) }; if (failedImageUrls.isNotEmpty()) IconButton(onClick = { retry() }) { Icon(Icons.Default.Sync, "إعادة الجلب", tint = Red) } } } }
         if (showSpeedPicker) Surface(Modifier.align(Alignment.BottomCenter).padding(bottom = 62.dp), color = Surface3, shape = RoundedCornerShape(12.dp)) { Row(Modifier.padding(8.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) { (1..5).forEach { speed -> FilterChip(autoScrollSpeed == speed, { autoScrollSpeed = speed; showSpeedPicker = false }, label = { Text("$speed") }) } } }
         if (showChapterList) {
             var newestFirst by remember { mutableStateOf(true) }
@@ -1470,7 +1482,10 @@ private fun Img(url:String, modifier:Modifier=Modifier, scale:ContentScale=Conte
 
 @Composable
 private fun SpringCard(onClick:()->Unit, content:@Composable ()->Unit) {
-    Box(Modifier.clickable(onClick = onClick)) { content() }
+    val source = remember { MutableInteractionSource() }
+    val pressed by source.collectIsPressedAsState()
+    val scale by animateFloatAsState(if (pressed) .97f else 1f, tween(100), label = "card-press")
+    Box(Modifier.graphicsLayer { scaleX = scale; scaleY = scale }.clickable(source, null, onClick = onClick)) { content() }
 }
 
 @Composable private fun GChip(label:String, accent:Color) {
@@ -1587,5 +1602,8 @@ private fun SpringCard(onClick:()->Unit, content:@Composable ()->Unit) {
 // ══════════════════════════════════════════════════════════════
 // SHIMMER
 // ══════════════════════════════════════════════════════════════
-@Composable private fun staticPlaceholder(): Brush =
-    Brush.linearGradient(listOf(Surface2, Surface2))
+@Composable private fun staticPlaceholder(): Brush {
+    val transition = rememberInfiniteTransition(label = "placeholder-shimmer")
+    val x by transition.animateFloat(-1f, 1.5f, infiniteRepeatable(tween(900, easing = LinearEasing)), label = "placeholder-offset")
+    return Brush.linearGradient(listOf(Surface3.copy(.45f), Color(0xFF252530), Surface3.copy(.8f)), Offset(x * 900f, 0f), Offset((x + .5f) * 1100f, 180f))
+}
