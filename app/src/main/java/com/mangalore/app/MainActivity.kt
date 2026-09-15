@@ -853,21 +853,45 @@ private fun SearchScreen(accent: Color, onBack: () -> Unit, onPick: (MangaItem) 
 private fun MangaListScreen(title: String, accent: Color, onBack: () -> Unit, loadPage: suspend (Int) -> List<MangaItem>, onPick: (MangaItem) -> Unit) {
     var items by remember { mutableStateOf<List<MangaItem>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
+    var loadingMore by remember { mutableStateOf(false) }
+    var page by remember { mutableIntStateOf(1) }
+    var hasMore by remember { mutableStateOf(true) }
     val scope = rememberCoroutineScope()
+    val gridState = rememberLazyGridState()
     fun load() { loading = true; scope.launch {
-        val loaded = mutableListOf<MangaItem>()
-        // The site returns 10 cards per page; keep requesting pages until the
-        // archive is exhausted so these screens are not limited to page one.
-        for (page in 1..100) {
-            val next = loadPage(page)
-            if (next.isEmpty()) break
-            loaded += next
-            if (next.size < 10) break
-        }
-        items = loaded.distinctBy { it.url }
+        val first = loadPage(1)
+        items = first.distinctBy { it.url }
+        page = 1
+        hasMore = first.size >= 10
         loading = false
     } }
     LaunchedEffect(Unit) { load() }
+    LaunchedEffect(gridState) {
+        snapshotFlow {
+            listOf(
+                gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0,
+                gridState.layoutInfo.totalItemsCount,
+                if (loading) 1 else 0,
+                if (loadingMore) 1 else 0,
+                if (hasMore) 1 else 0
+            )
+        }.collect { trigger ->
+                val lastVisible = trigger[0]
+                val total = trigger[1]
+                if (trigger[2] == 0 && trigger[3] == 0 && trigger[4] == 1 && total > 0 && lastVisible >= total - 3) {
+                    loadingMore = true
+                    val next = loadPage(page + 1).filterNot { candidate -> items.any { it.url == candidate.url } }
+                    if (next.isNotEmpty()) {
+                        items = items + next
+                        page += 1
+                        hasMore = next.size >= 10
+                    } else {
+                        hasMore = false
+                    }
+                    loadingMore = false
+                }
+            }
+    }
     Column(Modifier.fillMaxSize()) {
         TopBar(title, accent, onBack)
         if (loading) {
@@ -877,8 +901,13 @@ private fun MangaListScreen(title: String, accent: Color, onBack: () -> Unit, lo
         } else if (items.isEmpty()) {
             EmptyState(Icons.Default.WifiOff, "لا توجد أعمال", "تعذّر تحميل القائمة")
         } else {
-            LazyVerticalGrid(GridCells.Fixed(3), contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            LazyVerticalGrid(state = gridState, columns = GridCells.Fixed(3), contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 items(items, key = { it.id }) { m -> SpringCard({ onPick(m) }) { Column { Box(Modifier.fillMaxWidth().aspectRatio(CoverAspect).clip(RoundedCornerShape(12.dp))) { Img(m.coverUrl, Modifier.fillMaxSize()) }; Spacer(Modifier.height(6.dp)); Text(m.title, color = TextPri, fontSize = 11.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, fontFamily = Font) } } }
+                if (loadingMore) item(span = { GridItemSpan(3) }) {
+                    Box(Modifier.fillMaxWidth().padding(18.dp), Alignment.Center) {
+                        CircularProgressIndicator(color = accent, modifier = Modifier.size(26.dp), strokeWidth = 2.dp)
+                    }
+                }
                 item(span = { GridItemSpan(3) }) { Text("${items.size} عمل", color = TextDim, fontSize = 11.sp, fontFamily = Font, modifier = Modifier.fillMaxWidth().padding(20.dp), textAlign = TextAlign.Center) }
             }
         }
