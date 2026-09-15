@@ -161,9 +161,13 @@ private fun App() {
                     modifier = Modifier.fillMaxSize(),
                     targetState = cur,
                     transitionSpec = {
-                        val forward = stack.size > 1
-                        (fadeIn(tween(160)) + slideInHorizontally(tween(220)) { if (forward) it else -it }) togetherWith
-                            (fadeOut(tween(120)) + slideOutHorizontally(tween(220)) { if (forward) -it else it })
+                        if (initialState is Dest.Detail && targetState is Dest.DetailFull) {
+                            EnterTransition.None togetherWith ExitTransition.None
+                        } else {
+                            val forward = stack.size > 1
+                            (fadeIn(tween(180)) + slideInHorizontally(tween(180)) { if (forward) it else -it }) togetherWith
+                                (fadeOut(tween(140)) + slideOutHorizontally(tween(180)) { if (forward) -it else it })
+                        }
                     },
                     label = "rtl-screen-transition"
                 ) { d ->
@@ -883,7 +887,7 @@ private fun DetailLoadingScreen(
 
     Box(Modifier.fillMaxSize()) {
         if (!err) {
-            // Shimmer placeholder that mimics detail layout
+                // Static placeholder; the only motion is the single screen transition.
             Column(Modifier.fillMaxSize()) {
                 Box(Modifier.fillMaxWidth().height(280.dp).background(Surface2))
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
