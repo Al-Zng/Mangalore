@@ -1,6 +1,8 @@
 package com.mangalore.app
 
 import android.annotation.SuppressLint
+import android.os.Handler
+import android.os.Looper
 import android.os.Bundle
 import android.webkit.CookieManager
 import android.webkit.WebResourceRequest
@@ -298,8 +300,8 @@ private fun CfDialog(onSolved: (String) -> Unit, onSkip: () -> Unit) {
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                 Icon(Icons.Default.Info, null, tint = AccentLt, modifier = Modifier.size(15.dp))
-                                Text("انتظر قليلاً أو حلّ التحقق يدوياً إذا ظهر لك",
-                                    color = AccentLt, fontSize = 12.sp, lineHeight = 17.sp)
+                                Text("انتظر حتى يكتمل التحقق تلقائياً، وسيظهر التحدي فقط عند الحاجة",
+                                    color = AccentLt, fontFamily = Font, fontSize = 12.sp, lineHeight = 17.sp)
                             }
                         }
                     }
@@ -367,7 +369,10 @@ private fun CfProbe(onChallenge: () -> Unit, onSolved: (String) -> Unit) {
                         )
                         fun handle(text: String) {
                             if (challengeText.any { text.contains(it, ignoreCase = true) }) {
-                                onChallenge()
+                                // Give the hidden WebView time to finish the automatic check first.
+                                Handler(Looper.getMainLooper()).postDelayed({
+                                    if (!CookieStore.cfSolved) onChallenge()
+                                }, 4500L)
                             } else if (url?.contains("mangalik.net") == true) {
                                 CookieManager.getInstance().getCookie("https://mangalik.net")
                                     ?.takeIf { it.isNotBlank() }?.let(onSolved)
@@ -880,12 +885,12 @@ private fun DetailLoadingScreen(
         if (!err) {
             // Shimmer placeholder that mimics detail layout
             Column(Modifier.fillMaxSize()) {
-                Box(Modifier.fillMaxWidth().height(280.dp).background(staticPlaceholder()))
+                Box(Modifier.fillMaxWidth().height(280.dp).background(Surface2))
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Box(Modifier.fillMaxWidth(.7f).height(22.dp).clip(RoundedCornerShape(6.dp)).background(staticPlaceholder()))
-                    Box(Modifier.fillMaxWidth(.5f).height(14.dp).clip(RoundedCornerShape(4.dp)).background(staticPlaceholder()))
+                    Box(Modifier.fillMaxWidth(.7f).height(22.dp).clip(RoundedCornerShape(6.dp)).background(Surface3))
+                    Box(Modifier.fillMaxWidth(.5f).height(14.dp).clip(RoundedCornerShape(4.dp)).background(Surface3))
                     Spacer(Modifier.height(6.dp))
-                    repeat(5) { Box(Modifier.fillMaxWidth().height(13.dp).clip(RoundedCornerShape(4.dp)).background(staticPlaceholder())) }
+                    repeat(5) { Box(Modifier.fillMaxWidth().height(13.dp).clip(RoundedCornerShape(4.dp)).background(Surface3)) }
                 }
             }
         } else {
