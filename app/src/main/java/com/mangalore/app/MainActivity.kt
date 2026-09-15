@@ -1,6 +1,8 @@
 package com.mangalore.app
 
 import android.annotation.SuppressLint
+import android.app.Activity
+import android.view.WindowManager
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
@@ -1126,6 +1128,7 @@ private fun ReaderScreen(
     onProgress: (Int, Int, Boolean) -> Unit, onCfNeeded: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
+    val activity = LocalContext.current as? Activity
     var blocks by remember { mutableStateOf<List<Pair<Int, List<String>>>>(emptyList()) }
     var loadedIndices by remember { mutableStateOf<Set<Int>>(emptySet()) }
     var state by remember { mutableStateOf(0) }
@@ -1154,6 +1157,11 @@ private fun ReaderScreen(
     var showSpeedPicker by remember { mutableStateOf(false) }
     var failedImageUrls by remember { mutableStateOf<Set<String>>(emptySet()) }
     var retryingAll by remember { mutableStateOf(false) }
+    DisposableEffect(keepScreenOn) {
+        if (keepScreenOn) activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        else activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        onDispose { }
+    }
     val displayedChapterNum = remember(blocks) { blocks.firstOrNull()?.first?.let { manga.chapters.getOrNull(it)?.number } ?: "" }
     val displayedChapterTitle = remember(blocks) { blocks.firstOrNull()?.first?.let { i -> manga.chapters.getOrNull(i)?.let { c -> if (c.title.isNotEmpty() && c.title != "الفصل ${c.number}") c.title else "" } } ?: chTitle }
 
@@ -1192,17 +1200,37 @@ private fun ReaderScreen(
                 CircularProgressIndicator(color = accent, modifier = Modifier.size(58.dp), strokeWidth = 5.dp)
             }
             3 -> Box(Modifier.fillMaxSize(), Alignment.Center) { Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) { Icon(Icons.Default.CloudOff, null, tint = Red, modifier = Modifier.size(52.dp)); Text("تعذّر تحميل الفصل", color = TextSec); Button(::retry, colors = ButtonDefaults.buttonColors(containerColor = accent)) { Text("إعادة المحاولة", color = Color.White) } } }
-            else -> LazyColumn(modifier = Modifier.fillMaxSize().clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { bars = !bars }, state = listState) {
+            else -> {
+                val readerContent: LazyListScope.() -> Unit = {
                 blocks.forEachIndexed { position, (index, images) ->
                     item(key = "chapter-header-$index") { Box(Modifier.fillMaxWidth().background(Brush.horizontalGradient(listOf(accent.copy(.22f), accent.copy(.06f), Color.Transparent))).padding(horizontal = 16.dp, vertical = 14.dp)) { Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) { Box(Modifier.width(CoverWidthCh).height(CoverHeightCh).clip(RoundedCornerShape(8.dp))) { Img(manga.coverUrl, Modifier.fillMaxSize()); Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(.82f)))).padding(bottom = 3.dp, top = 8.dp), Alignment.Center) { Text(manga.chapters[index].number, color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold) } }; Column { Text("الفصل ${manga.chapters[index].number}", color = accent, fontSize = 15.sp, fontWeight = FontWeight.Bold); if (displayedChapterTitle.isNotEmpty()) Text(displayedChapterTitle, color = TextSec, fontSize = 12.sp) } } } }
                     itemsIndexed(images, key = { i, url -> "$index-$i-$url" }) { _, url ->
                         SubcomposeAsyncImage(model = ImageRequest.Builder(LocalContext.current).data(url).addHeader("Referer", "https://mangalik.net/").addHeader("User-Agent", "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/124.0.0.0").apply { if (CookieStore.has()) addHeader("Cookie", CookieStore.cfCookies) }
                             .listener(onError = { _, result -> Log.e("MangaloreImages", "Image failed url=$url", result.throwable) })
-                            .crossfade(false).build(), contentDescription = null, contentScale = ContentScale.FillWidth, modifier = Modifier.fillMaxWidth(), loading = { Box(Modifier.fillMaxWidth().height(270.dp), Alignment.Center) { CircularProgressIndicator(color = accent.copy(.5f), modifier = Modifier.size(30.dp), strokeWidth = 2.dp) } }, error = { failedImageUrls = failedImageUrls + url; Box(Modifier.fillMaxWidth().height(90.dp).background(Surface2), Alignment.Center) { Icon(Icons.Default.BrokenImage, null, tint = TextDim, modifier = Modifier.size(30.dp)) } })
+                            .crossfade(false).build(), contentDescription = null, contentScale = ContentScale.FillWidth, modifier = Modifier.fillMaxWidth().graphicsLayer {
+                                val zoom = if (zoomImages) 1.15f else 1f
+                                scaleX = zoom; scaleY = zoom
+                            }, loading = { Box(Modifier.fillMaxWidth().height(270.dp), Alignment.Center) { CircularProgressIndicator(color = accent.copy(.5f), modifier = Modifier.size(30.dp), strokeWidth = 2.dp) } }, error = { failedImageUrls = failedImageUrls + url; Box(Modifier.fillMaxWidth().height(90.dp).background(Surface2), Alignment.Center) { Icon(Icons.Default.BrokenImage, null, tint = TextDim, modifier = Modifier.size(30.dp)) } })
                     }
                     if (position == blocks.lastIndex) item(key = "chapter-loader-$index") { LaunchedEffect(index, blocks.size) { loadChapter(index - 1) }; if (index > 0) LinearProgressIndicator(Modifier.fillMaxWidth().padding(18.dp), color = accent) else Text("انتهت الفصول", color = TextDim, modifier = Modifier.fillMaxWidth().padding(24.dp), textAlign = TextAlign.Center) }
                 }
                 item { Spacer(Modifier.height(80.dp)) }
+                }
+                val horizontal = readingMode == "عرضي"
+                if (horizontal) {
+                    LazyRow(
+                        modifier = Modifier.fillMaxSize().clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { bars = !bars },
+                        state = listState,
+                        reverseLayout = horizontalDirection == "يسار لليمين",
+                        content = readerContent
+                    )
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize().clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { bars = !bars },
+                        state = listState,
+                        content = readerContent
+                    )
+                }
             }
         }
         AnimatedVisibility(bars && state == 1, enter = fadeIn(tween(140)) + slideInVertically(tween(160)) { -it }, exit = fadeOut(tween(100)) + slideOutVertically(tween(120)) { -it }, label = "reader-top-bar") {
