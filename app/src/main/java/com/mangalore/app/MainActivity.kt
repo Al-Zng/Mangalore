@@ -107,6 +107,7 @@ private sealed class Dest {
     object LatestManga : Dest()
     object Library : Dest()
     object History : Dest()
+    object Downloads : Dest()
     object Profile : Dest()
     object Settings : Dest()
     data class Detail(val item: MangaItem) : Dest()
@@ -181,6 +182,7 @@ private fun AuthScreen(onSignedIn: () -> Unit) {
 @Composable
 private fun App() {
     val context = LocalContext.current
+    val appScope = rememberCoroutineScope()
     var authReady by remember { mutableStateOf(false) }
     var signedIn by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
@@ -206,6 +208,14 @@ private fun App() {
 
     val lib     = remember { mutableStateListOf<MangaItem>() }
     var hist by remember { mutableStateOf(listOf<ReadingProgress>()) }
+    LaunchedEffect(signedIn) {
+        if (signedIn) {
+            runCatching { CloudStore.fetchLibrary() }.onSuccess { remote ->
+                lib.clear()
+                lib.addAll(remote)
+            }
+        }
+    }
 
     var showCf  by remember { mutableStateOf(false) }
     var readerRefresh by remember { mutableIntStateOf(0) }
@@ -247,6 +257,7 @@ private fun App() {
                         is Dest.LatestManga -> MangaListScreen("أحدث المانجا", accent, ::pop, { Scraper.fetchLatest(it) }) { push(Dest.Detail(it)) }
                         is Dest.Library -> LibraryScreen(accent, lib, ::pop, { push(Dest.Detail(it)) }) { lib.remove(it) }
                         is Dest.History -> HistoryScreen(accent, hist, ::pop, { p -> push(Dest.Reader(p.manga.chapters[p.chapterIndex].url, "الفصل ${p.manga.chapters[p.chapterIndex].number}", p.manga, p.chapterIndex, p.page)) }) { hist = emptyList() }
+                        is Dest.Downloads -> DownloadsScreen(accent, ::pop)
                         is Dest.Profile -> ProfileScreen(accent, ::pop)
                         is Dest.Settings -> SettingsScreen(accent, amoled, { amoled = it }, { accent = it }, ::pop)
                         is Dest.Detail -> DetailLoadingScreen(d.item, accent, lib, ::pop) { replaceTop(Dest.DetailFull(it)) }
@@ -263,7 +274,11 @@ private fun App() {
                         )
                         is Dest.Reader -> key("${d.url}-${d.chapterIndex}-$readerRefresh") { ReaderScreen(
                             d.url, d.chTitle, d.manga, d.chapterIndex, accent, ::pop, d.page,
-                            onProgress = { page, total, completed -> hist = hist.map { p -> if (p.manga.url == d.manga.url && p.chapterIndex == d.chapterIndex) p.copy(page = page, totalPages = total, completed = completed) else p } },
+                            onProgress = { page, total, completed ->
+                                hist = hist.map { p -> if (p.manga.url == d.manga.url && p.chapterIndex == d.chapterIndex) p.copy(page = page, totalPages = total, completed = completed) else p }
+                                val ch = d.manga.chapters.getOrNull(d.chapterIndex)
+                                if (ch != null) appScope.launch { runCatching { CloudStore.saveProgress(MangaItem(d.manga.slug, d.manga.title, d.manga.slug, d.manga.coverUrl, d.manga.coverFull, d.manga.url), ch.url, ch.number, d.chapterIndex, page, total, completed) } }
+                            },
                             onCfNeeded = { showCf = true }
                         ) }
                     }
@@ -302,6 +317,7 @@ private fun App() {
                             "latest"   -> push(Dest.LatestManga)
                             "library"  -> { if (cur !is Dest.Library)  push(Dest.Library) else drawer = false }
                             "history"  -> { if (cur !is Dest.History)  push(Dest.History) else drawer = false }
+                            "downloads" -> { if (cur !is Dest.Downloads) push(Dest.Downloads) else drawer = false }
                             "profile"  -> { if (cur !is Dest.Profile)  push(Dest.Profile) else drawer = false }
                             "settings" -> { if (cur !is Dest.Settings) push(Dest.Settings) else drawer = false }
                         }
@@ -1038,8 +1054,11 @@ private fun DetailScreen(
     history: List<ReadingProgress>, onBack: () -> Unit,
     onChapter: (ChapterItem, Int) -> Unit, onContinue: (ReadingProgress) -> Unit
 ) {
+    val context = LocalContext.current
+    val cloudScope = rememberCoroutineScope()
     var tab   by remember { mutableStateOf(0) }
     var newestFirst by remember { mutableStateOf(true) }
+    var showDownloadDialog by remember { mutableStateOf(false) }
     val inLib = lib.any { it.url == d.url }
     val asItem = MangaItem(d.slug, d.title, d.slug, d.coverUrl, d.coverFull, d.url)
 
@@ -1121,12 +1140,23 @@ private fun DetailScreen(
                         }
                     }
                     OutlinedButton(
-                        { if (inLib) lib.removeAll { it.url == d.url } else lib.add(0, asItem) },
+                        {
+                            if (inLib) {
+                                lib.removeAll { it.url == d.url }
+                                cloudScope.launch { runCatching { CloudStore.removeLibrary(d.url) } }
+                            } else {
+                                lib.add(0, asItem)
+                                cloudScope.launch { runCatching { CloudStore.addLibrary(asItem) } }
+                            }
+                        },
                         border = BorderStroke(1.dp, if (inLib) accent else Border),
                         shape  = RoundedCornerShape(10.dp),
                         modifier = Modifier.wrapContentWidth()) {
                         Icon(if (inLib) Icons.Default.Bookmark else Icons.Outlined.BookmarkBorder,
                             null, tint = if (inLib) accent else TextSec, modifier = Modifier.size(16.dp))
+                    }
+                    OutlinedButton({ showDownloadDialog = true }, shape = RoundedCornerShape(10.dp), modifier = Modifier.wrapContentWidth()) {
+                        Icon(Icons.Default.Download, "تنزيل الفصول", tint = TextSec, modifier = Modifier.size(16.dp))
                     }
                 }
             }
@@ -1244,6 +1274,32 @@ private fun DetailScreen(
         }
         item { Spacer(Modifier.height(48.dp)) }
     }
+    if (showDownloadDialog) {
+        var from by remember { mutableStateOf("1") }
+        var to by remember { mutableStateOf(d.chapters.size.toString()) }
+        AlertDialog(
+            onDismissRequest = { showDownloadDialog = false },
+            title = { Text("تنزيل الفصول") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("حدد فصلًا واحدًا أو نطاقًا للتنزيل على الجهاز", color = TextSec, fontSize = 12.sp)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(from, { from = it }, label = { Text("من") }, singleLine = true, modifier = Modifier.weight(1f))
+                        OutlinedTextField(to, { to = it }, label = { Text("إلى") }, singleLine = true, modifier = Modifier.weight(1f))
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val start = (from.toIntOrNull() ?: 1) - 1
+                    val end = (to.toIntOrNull() ?: from.toIntOrNull() ?: 1) - 1
+                    if (d.chapters.isNotEmpty()) LocalDownloads.enqueue(context, d, start, end)
+                    showDownloadDialog = false
+                }) { Text("تنزيل", color = accent) }
+            },
+            dismissButton = { TextButton(onClick = { showDownloadDialog = false }) { Text("إلغاء") } }
+        )
+    }
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -1257,7 +1313,8 @@ private fun ReaderScreen(
     onProgress: (Int, Int, Boolean) -> Unit, onCfNeeded: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
-    val activity = LocalContext.current as? Activity
+    val context = LocalContext.current
+    val activity = context as? Activity
     var blocks by remember { mutableStateOf<List<Pair<Int, List<String>>>>(emptyList()) }
     var loadedIndices by remember { mutableStateOf<Set<Int>>(emptySet()) }
     var state by remember { mutableStateOf(0) }
@@ -1314,7 +1371,9 @@ private fun ReaderScreen(
         if (index !in manga.chapters.indices || (!reset && index in loadedIndices)) return
         if (reset) { state = 0; retryingAll = true }
         scope.launch {
-            val (images, cf) = Scraper.fetchChapterImages(manga.chapters[index].url)
+            val local = LocalDownloads.localImages(context, manga.chapters[index].url)
+            val (remoteImages, cf) = if (local.isNotEmpty()) Pair(local, false) else Scraper.fetchChapterImages(manga.chapters[index].url)
+            val images = remoteImages
             when {
                 cf -> { state = 2; retryingAll = false }
                 images.isEmpty() -> { if (reset) state = 3; retryingAll = false }
@@ -1561,20 +1620,82 @@ private fun HistoryScreen(accent:Color, hist:List<ReadingProgress>,
 // PROFILE
 // ══════════════════════════════════════════════════════════════
 @Composable
-private fun ProfileScreen(accent: Color, onBack: () -> Unit) {
+private fun DownloadsScreen(accent: Color, onBack: () -> Unit) {
+    val context = LocalContext.current
+    var rows by remember { mutableStateOf(LocalDownloads.items(context)) }
+    LaunchedEffect(Unit) { while (true) { rows = LocalDownloads.items(context); delay(1000) } }
     Column(Modifier.fillMaxSize()) {
-        TopBar("الملف الشخصي", accent, onBack)
-        Box(Modifier.fillMaxSize(), Alignment.Center) {
-            Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Box(Modifier.size(80.dp).clip(CircleShape).background(Surface2).border(2.dp,Border,CircleShape), Alignment.Center) {
-                    Icon(Icons.Default.Person, null, tint=TextDim, modifier=Modifier.size(40.dp))
+        TopBar("التنزيلات", accent, onBack)
+        if (rows.isEmpty()) {
+            EmptyState(Icons.Default.Download, "لا توجد تنزيلات", "حدد فصولًا من صفحة المانجا لتنزيلها على جهازك")
+        } else {
+            LazyColumn(contentPadding = PaddingValues(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                items(rows) { raw ->
+                    val parts = raw.split("|")
+                    val title = parts.getOrNull(0).orEmpty()
+                    val total = parts.getOrNull(1).orEmpty()
+                    val done = parts.getOrNull(2).orEmpty()
+                    Surface(color = Surface2, shape = RoundedCornerShape(14.dp), border = BorderStroke(1.dp, Border)) {
+                        Column(Modifier.padding(14.dp)) {
+                            Text(title, color = TextPri, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                            Text("$done من $total فصل", color = TextSec, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
+                            LinearProgressIndicator(progress = { (done.toFloatOrNull() ?: 0f) / (total.toFloatOrNull() ?: 1f) }, color = accent, trackColor = Surface3, modifier = Modifier.fillMaxWidth().padding(top = 10.dp))
+                        }
+                    }
                 }
-                Spacer(Modifier.height(16.dp))
-                Text(AuthStore.displayName.ifBlank { "قارئ مانجالور" }, color=TextPri, fontSize=18.sp, fontWeight=FontWeight.Bold)
-                Spacer(Modifier.height(6.dp))
-                Text("ملفك العام ومكتبتك وسجل قراءتك محفوظة على حسابك", color=TextDim, fontSize=13.sp, textAlign=TextAlign.Center)
             }
         }
+    }
+}
+
+@Composable
+private fun ProfileScreen(accent: Color, onBack: () -> Unit) {
+    var stats by remember { mutableStateOf(Triple(0, 0, 0)) }
+    LaunchedEffect(Unit) { runCatching { CloudStore.stats() }.onSuccess { stats = it } }
+    Column(Modifier.fillMaxSize()) {
+        TopBar("الملف الشخصي", accent, onBack)
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            item {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Box(Modifier.size(82.dp).clip(RoundedCornerShape(22.dp)).background(accent), Alignment.Center) { Icon(Icons.Default.Person, null, tint = Color.White, modifier = Modifier.size(46.dp)) }
+                    Column(Modifier.weight(1f)) {
+                        Text(AuthStore.displayName.ifBlank { "قارئ مانجالور" }, color = TextPri, fontSize = 21.sp, fontWeight = FontWeight.Bold)
+                        Text("عضو في مانجالور", color = TextSec, fontSize = 12.sp)
+                    }
+                }
+            }
+            item { Text("إحصائيات القراءة", color = TextSec, fontSize = 14.sp) }
+            item {
+                Surface(color = Surface2, shape = RoundedCornerShape(20.dp), border = BorderStroke(1.dp, Border)) {
+                    Column {
+                        Row(Modifier.fillMaxWidth().padding(18.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Column { Text("الفصول التي تمت مشاهدتها", color = TextSec, fontSize = 13.sp); Text("${stats.first}", color = TextPri, fontSize = 38.sp, fontWeight = FontWeight.Bold) }
+                            Icon(Icons.Default.BarChart, null, tint = accent, modifier = Modifier.size(48.dp))
+                        }
+                        HorizontalDivider(color = Border)
+                        Row(Modifier.fillMaxWidth()) {
+                            ProfileStat("جاري القراءة", stats.second.toString(), Modifier.weight(1f))
+                            ProfileStat("المفضلة", stats.third.toString(), Modifier.weight(1f))
+                        }
+                        HorizontalDivider(color = Border)
+                        Row(Modifier.fillMaxWidth()) {
+                            ProfileStat("قراءة لاحقًا", "0", Modifier.weight(1f))
+                            ProfileStat("المانجا", stats.third.toString(), Modifier.weight(1f))
+                        }
+                    }
+                }
+            }
+            item { Text("آخر القراءات", color = TextSec, fontSize = 14.sp) }
+            item { Text("ستظهر آخر قراءاتك هنا بعد بدء القراءة", color = TextDim, fontSize = 13.sp) }
+        }
+    }
+}
+
+@Composable
+private fun ProfileStat(label: String, value: String, modifier: Modifier) {
+    Column(modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(value, color = TextPri, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+        Text(label, color = TextSec, fontSize = 11.sp)
     }
 }
 
@@ -1696,6 +1817,7 @@ private fun Drawer(accent:Color, cur:Dest, onClose:()->Unit, onNav:(String)->Uni
                     item { DItem("البحث",        Icons.Default.Search,        "search",   cur is Dest.Search,   onNav) }
                     item { DItem("مكتبتي",       Icons.Default.LibraryBooks,  "library",  cur is Dest.Library,  onNav) }
                     item { DItem("سجل القراءة",  Icons.Default.History,       "history",  cur is Dest.History,  onNav) }
+                    item { DItem("التنزيلات",    Icons.Default.Download,      "downloads", cur is Dest.Downloads, onNav) }
                     item { DItem("الملف الشخصي", Icons.Default.Person,        "profile",  cur is Dest.Profile,  onNav) }
                     item { Spacer(Modifier.height(8.dp)); HorizontalDivider(color=Border) }
                     item { DSec("أخرى", accent) }
