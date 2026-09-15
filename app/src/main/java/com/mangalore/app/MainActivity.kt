@@ -97,6 +97,8 @@ private val Font = FontFamily(
 private sealed class Dest {
     object Home : Dest()
     object Search : Dest()
+    object AllManga : Dest()
+    object LatestManga : Dest()
     object Library : Dest()
     object History : Dest()
     object Profile : Dest()
@@ -135,6 +137,7 @@ private fun App() {
     var hist by remember { mutableStateOf(listOf<ReadingProgress>()) }
 
     var showCf  by remember { mutableStateOf(false) }
+    var readerRefresh by remember { mutableIntStateOf(0) }
     var toast   by remember { mutableStateOf("") }
 
     fun push(d: Dest) { stack = stack + d; drawer = false }
@@ -169,6 +172,8 @@ private fun App() {
                     when (d) {
                         is Dest.Home -> HomeScreen(accent, { drawer = true }, { push(Dest.Search) }) { push(Dest.Detail(it)) }
                         is Dest.Search -> SearchScreen(accent, ::pop) { push(Dest.Detail(it)) }
+                        is Dest.AllManga -> MangaListScreen("كل المانجات", accent, ::pop, { Scraper.fetchAll(it) }) { push(Dest.Detail(it)) }
+                        is Dest.LatestManga -> MangaListScreen("أحدث المانجات", accent, ::pop, { Scraper.fetchLatest(it) }) { push(Dest.Detail(it)) }
                         is Dest.Library -> LibraryScreen(accent, lib, ::pop, { push(Dest.Detail(it)) }) { lib.remove(it) }
                         is Dest.History -> HistoryScreen(accent, hist, ::pop, { p -> push(Dest.Reader(p.manga.chapters[p.chapterIndex].url, "الفصل ${p.manga.chapters[p.chapterIndex].number}", p.manga, p.chapterIndex, p.page)) }) { hist = emptyList() }
                         is Dest.Profile -> ProfileScreen(accent, ::pop)
@@ -182,11 +187,11 @@ private fun App() {
                                 push(Dest.Reader(ch.url, ch.title.ifEmpty { "الفصل ${ch.number}" }, d.d, index, 1))
                             }
                         )
-                        is Dest.Reader -> ReaderScreen(
+                        is Dest.Reader -> key(readerRefresh) { ReaderScreen(
                             d.url, d.chTitle, d.manga, d.chapterIndex, accent, ::pop, d.page,
                             onProgress = { page, total, completed -> hist = hist.map { p -> if (p.manga.url == d.manga.url && p.chapterIndex == d.chapterIndex) p.copy(page = page, totalPages = total, completed = completed) else p } },
                             onCfNeeded = { showCf = true }
-                        )
+                        ) }
                     }
                 }
 
@@ -196,6 +201,7 @@ private fun App() {
                         onSolved = { cookies ->
                             CookieStore.cfCookies = cookies
                             CookieStore.cfSolved = true
+                            readerRefresh++
                         }
                     )
                 }
@@ -219,6 +225,8 @@ private fun App() {
                         when (dest) {
                             "home"     -> home()
                             "search"   -> push(Dest.Search)
+                            "all"      -> push(Dest.AllManga)
+                            "latest"   -> push(Dest.LatestManga)
                             "library"  -> { if (cur !is Dest.Library)  push(Dest.Library) else drawer = false }
                             "history"  -> { if (cur !is Dest.History)  push(Dest.History) else drawer = false }
                             "profile"  -> { if (cur !is Dest.Profile)  push(Dest.Profile) else drawer = false }
@@ -231,7 +239,7 @@ private fun App() {
                 if (showCf) {
                     CfDialog(
                         onSolved = { c -> CookieStore.cfCookies = c; CookieStore.cfSolved = true
-                            showCf = false; toast = "✓ تم التحقق بنجاح" },
+                            showCf = false; readerRefresh++; toast = "✓ تم التحقق بنجاح" },
                         onSkip   = { showCf = false }
                     )
                 }
@@ -281,12 +289,12 @@ private fun CfDialog(onSolved: (String) -> Unit, onSkip: () -> Unit) {
                             Spacer(Modifier.width(12.dp))
                             Column(Modifier.weight(1f)) {
                                 Text("التحقق من الأمان", color = TextPri, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                                Text("أكمل التحقق للوصول إلى الفصول", color = TextSec, fontSize = 12.sp)
+                                Text("أكمل التحقق للوصول إلى الفصول", color = TextSec, fontFamily = Font, fontSize = 12.sp)
                             }
                             if (loading) CircularProgressIndicator(
                                 Modifier.size(18.dp), color = Accent, strokeWidth = 2.dp)
                             Spacer(Modifier.width(8.dp))
-                            TextButton(onSkip) { Text("تخطي", color = TextSec, fontSize = 13.sp) }
+                            TextButton(onSkip) { Text("تخطي", color = TextSec, fontFamily = Font, fontSize = 13.sp) }
                         }
 
                         AnimatedVisibility(loading) {
@@ -831,6 +839,30 @@ private fun SearchScreen(accent: Color, onBack: () -> Unit, onPick: (MangaItem) 
     }
 }
 
+@Composable
+private fun MangaListScreen(title: String, accent: Color, onBack: () -> Unit, loadPage: suspend (Int) -> List<MangaItem>, onPick: (MangaItem) -> Unit) {
+    var items by remember { mutableStateOf<List<MangaItem>>(emptyList()) }
+    var loading by remember { mutableStateOf(true) }
+    val scope = rememberCoroutineScope()
+    fun load() { loading = true; scope.launch { items = loadPage(1); loading = false } }
+    LaunchedEffect(Unit) { load() }
+    Column(Modifier.fillMaxSize()) {
+        TopBar(title, accent, onBack)
+        if (loading) {
+            LazyVerticalGrid(GridCells.Fixed(3), contentPadding = PaddingValues(14.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                items(9) { Box(Modifier.fillMaxWidth().aspectRatio(CoverAspect).clip(RoundedCornerShape(12.dp)).background(shimmer())) }
+            }
+        } else if (items.isEmpty()) {
+            EmptyState(Icons.Default.WifiOff, "لا توجد أعمال", "تعذّر تحميل القائمة")
+        } else {
+            LazyVerticalGrid(GridCells.Fixed(3), contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                items(items, key = { it.id }) { m -> SpringCard({ onPick(m) }) { Column { Box(Modifier.fillMaxWidth().aspectRatio(CoverAspect).clip(RoundedCornerShape(12.dp))) { Img(m.coverUrl, Modifier.fillMaxSize()) }; Spacer(Modifier.height(6.dp)); Text(m.title, color = TextPri, fontSize = 11.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, fontFamily = Font) } } }
+                item(span = { GridItemSpan(3) }) { Text("${items.size} عمل", color = TextDim, fontSize = 11.sp, fontFamily = Font, modifier = Modifier.fillMaxWidth().padding(20.dp), textAlign = TextAlign.Center) }
+            }
+        }
+    }
+}
+
 // ══════════════════════════════════════════════════════════════
 // DETAIL – LOADING STATE
 // ══════════════════════════════════════════════════════════════
@@ -1144,7 +1176,7 @@ private fun ReaderScreen(
     Box(Modifier.fillMaxSize().background(Black)) {
         when (state) {
             0 -> Box(Modifier.fillMaxSize(), Alignment.Center) { Column(horizontalAlignment = Alignment.CenterHorizontally) { CircularProgressIndicator(color = accent); Spacer(Modifier.height(14.dp)); Text("جاري تحميل الفصل...", color = TextSec) } }
-            2 -> Box(Modifier.fillMaxSize(), Alignment.Center) { Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) { Icon(Icons.Default.Security, null, tint = accent, modifier = Modifier.size(56.dp)); Spacer(Modifier.height(16.dp)); Text("مطلوب تحقق الأمان", color = TextPri, fontSize = 17.sp, fontWeight = FontWeight.Bold); Spacer(Modifier.height(8.dp)); Text("حل تحدي الأمان للوصول إلى الفصل", color = TextSec, textAlign = TextAlign.Center); Spacer(Modifier.height(24.dp)); Button(onCfNeeded, Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = accent)) { Text("حل التحقق", color = Color.White) }; Spacer(Modifier.height(10.dp)); OutlinedButton(onBack, Modifier.fillMaxWidth()) { Text("رجوع", color = TextSec) } } }
+            2 -> Box(Modifier.fillMaxSize(), Alignment.Center) { Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) { Icon(Icons.Default.Security, null, tint = accent, modifier = Modifier.size(56.dp)); Spacer(Modifier.height(16.dp)); Text("مطلوب تحقق الأمان", color = TextPri, fontSize = 17.sp, fontWeight = FontWeight.Bold); Spacer(Modifier.height(8.dp)); Text("حل تحدي الأمان للوصول إلى الفصل", color = TextSec, textAlign = TextAlign.Center); Spacer(Modifier.height(24.dp)); Button(onCfNeeded, Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = accent)) { Text("حل التحقق", color = Color.White, fontFamily = Font) }; Spacer(Modifier.height(10.dp)); OutlinedButton(onBack, Modifier.fillMaxWidth()) { Text("رجوع", color = TextSec, fontFamily = Font) } } }
             3 -> Box(Modifier.fillMaxSize(), Alignment.Center) { Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) { Icon(Icons.Default.CloudOff, null, tint = Red, modifier = Modifier.size(52.dp)); Text("تعذّر تحميل الفصل", color = TextSec); Button(::retry, colors = ButtonDefaults.buttonColors(containerColor = accent)) { Text("إعادة المحاولة", color = Color.White) } } }
             else -> LazyColumn(modifier = Modifier.fillMaxSize().clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { bars = !bars }, state = listState) {
                 blocks.forEachIndexed { position, (index, images) ->
@@ -1394,6 +1426,8 @@ private fun Drawer(accent:Color, cur:Dest, onClose:()->Unit, onNav:(String)->Uni
                 LazyColumn(Modifier.weight(1f).padding(horizontal=8.dp, vertical=8.dp)) {
                     item { DSec("التنقل", accent) }
                     item { DItem("الرئيسية",    Icons.Default.Home,          "home",     cur is Dest.Home,     onNav) }
+                    item { DItem("كل المانجات",  Icons.Default.GridView,       "all",      cur is Dest.AllManga, onNav) }
+                    item { DItem("أحدث المانجات", Icons.Default.NewReleases,    "latest",   cur is Dest.LatestManga, onNav) }
                     item { DItem("البحث",        Icons.Default.Search,        "search",   cur is Dest.Search,   onNav) }
                     item { DItem("مكتبتي",       Icons.Default.LibraryBooks,  "library",  cur is Dest.Library,  onNav) }
                     item { DItem("سجل القراءة",  Icons.Default.History,       "history",  cur is Dest.History,  onNav) }

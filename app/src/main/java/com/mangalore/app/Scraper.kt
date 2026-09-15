@@ -78,6 +78,13 @@ object Scraper {
     fun cfChallengeUrl() = CF_URL
     fun searchUrl(q: String) = "$BASE/?s=${q.trim().replace(" ", "+")}&post_type=wp-manga"
     fun latestUrl(page: Int = 1) = "$BASE/manga-list/?status=&type=&order=latest&page=$page"
+    fun allUrl(page: Int = 1) = "$BASE/manga-list/?page=$page"
+
+    suspend fun fetchAll(page: Int = 1): List<MangaItem> = withContext(Dispatchers.IO) {
+        val html = get(allUrl(page)) ?: return@withContext emptyList()
+        if (isCf(html)) return@withContext emptyList()
+        parseMangaList(Jsoup.parse(html))
+    }
     fun popularUrl(page: Int = 1) = "$BASE/manga-list/?status=&type=&order=trending&page=$page"
 
     // ── Upgrade thumbnail URL to full-size ────────────────────
