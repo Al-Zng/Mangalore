@@ -1143,6 +1143,9 @@ private fun ReaderScreen(
     } }
     val totalPages by remember { derivedStateOf { blocks.sumOf { it.second.size } } }
     var showChapterList by remember { mutableStateOf(false) }
+    var showReaderSettings by remember { mutableStateOf(false) }
+    var readingMode by remember { mutableStateOf("طولي") }
+    var horizontalDirection by remember { mutableStateOf("يمين لليسار") }
     var autoScrollEnabled by remember { mutableStateOf(false) }
     var autoScrollSpeed by remember { mutableStateOf(3) }
     var showSpeedPicker by remember { mutableStateOf(false) }
@@ -1200,10 +1203,40 @@ private fun ReaderScreen(
             }
         }
         AnimatedVisibility(bars && state == 1, enter = fadeIn(tween(140)) + slideInVertically(tween(160)) { -it }, exit = fadeOut(tween(100)) + slideOutVertically(tween(120)) { -it }, label = "reader-top-bar") {
-            Surface(color = Color.Black.copy(.92f)) { Column { Row(Modifier.statusBarsPadding().padding(horizontal = 4.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) { IconButton(onBack) { Icon(Icons.Default.ArrowForward, null, tint = Color.White) }; Column(Modifier.weight(1f).padding(horizontal = 4.dp)) { Text(manga.title, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis); Text(if (displayedChapterNum.isNotEmpty()) "الفصل $displayedChapterNum${if (displayedChapterTitle.isNotEmpty()) " • $displayedChapterTitle" else ""}" else chTitle, color = Color.White.copy(.7f), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }; if (totalPages > 0) Text("$currentPage / $totalPages", color = Color.White, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 10.dp)); IconButton(onClick = { showChapterList = true }) { Icon(Icons.Default.List, "قائمة الفصول", tint = Color.White) } } } }
+            Surface(color = Color.Black.copy(.92f)) { Column { Row(Modifier.statusBarsPadding().padding(horizontal = 4.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) { IconButton(onBack) { Icon(Icons.Default.ArrowForward, null, tint = Color.White) }; Column(Modifier.weight(1f).padding(horizontal = 4.dp)) { Text(manga.title, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis); Text(if (displayedChapterNum.isNotEmpty()) "الفصل $displayedChapterNum${if (displayedChapterTitle.isNotEmpty()) " • $displayedChapterTitle" else ""}" else chTitle, color = Color.White.copy(.7f), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }; if (totalPages > 0) Text("$currentPage / $totalPages", color = Color.White, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 10.dp)); IconButton(onClick = { showReaderSettings = true }) { Icon(Icons.Default.Settings, "إعدادات القارئ", tint = Color.White) }; IconButton(onClick = { showChapterList = true }) { Icon(Icons.Default.List, "قائمة الفصول", tint = Color.White) } } } }
         }
-        AnimatedVisibility(bars && state == 1, enter = fadeIn(tween(140)) + slideInVertically(tween(160)) { it }, exit = fadeOut(tween(100)) + slideOutVertically(tween(120)) { it }, label = "reader-bottom-bar") { Surface(color = Color.Black.copy(.92f)) { Row(Modifier.navigationBarsPadding().padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) { Text("تمرير تلقائي", color = Color.White, fontSize = 12.sp, modifier = Modifier.weight(1f)); IconButton(onClick = { autoScrollEnabled = !autoScrollEnabled }) { Icon(if (autoScrollEnabled) Icons.Default.Pause else Icons.Default.PlayArrow, null, tint = accent) }; IconButton(onClick = { showSpeedPicker = !showSpeedPicker }) { Icon(Icons.Default.Timer, null, tint = Color.White) }; if (failedImageUrls.isNotEmpty()) IconButton(onClick = { retry() }) { Icon(Icons.Default.Sync, "إعادة الجلب", tint = Red) } } } }
+        AnimatedVisibility(Modifier.align(Alignment.BottomCenter), visible = bars && state == 1, enter = fadeIn(tween(140)) + slideInVertically(tween(160)) { it }, exit = fadeOut(tween(100)) + slideOutVertically(tween(120)) { it }, label = "reader-bottom-bar") { Surface(color = Color.Black.copy(.92f)) { Row(Modifier.navigationBarsPadding().padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) { Text("تمرير تلقائي", color = Color.White, fontSize = 12.sp, modifier = Modifier.weight(1f)); IconButton(onClick = { autoScrollEnabled = !autoScrollEnabled }) { Icon(if (autoScrollEnabled) Icons.Default.Pause else Icons.Default.PlayArrow, null, tint = accent) }; IconButton(onClick = { showSpeedPicker = !showSpeedPicker }) { Icon(Icons.Default.Timer, null, tint = Color.White) }; if (failedImageUrls.isNotEmpty()) IconButton(onClick = { retry() }) { Icon(Icons.Default.Sync, "إعادة الجلب", tint = Red) } } } }
         if (showSpeedPicker) Surface(Modifier.align(Alignment.BottomCenter).padding(bottom = 62.dp), color = Surface3, shape = RoundedCornerShape(12.dp)) { Row(Modifier.padding(8.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) { (1..5).forEach { speed -> FilterChip(autoScrollSpeed == speed, { autoScrollSpeed = speed; showSpeedPicker = false }, label = { Text("$speed") }) } } }
+        if (showReaderSettings) {
+            ModalBottomSheet(onDismissRequest = { showReaderSettings = false }, containerColor = Color.Black, contentColor = Color.White, dragHandle = { BottomSheetDefaults.DragHandle(color = TextDim) }) {
+                Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
+                    Text("إعدادات القارئ", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp))
+                    Text("التنقل", color = accent, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
+                    Text("اتجاه القراءة", color = Color.White, fontSize = 15.sp, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp))
+                    Text("طولي أو عرضي", color = TextSec, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp))
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp).background(Color.Black, RoundedCornerShape(14.dp)).padding(4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        listOf("طولي", "عرضي").forEach { option ->
+                            Box(Modifier.weight(1f).clip(RoundedCornerShape(10.dp)).background(if (readingMode == option) accent else Color.Transparent).clickable { readingMode = option }.padding(vertical = 12.dp), Alignment.Center) { Text(option, color = Color.White, fontSize = 14.sp) }
+                        }
+                    }
+                    if (readingMode == "عرضي") {
+                        D2()
+                        Text("الاتجاه التقليدي", color = Color.White, fontSize = 15.sp, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
+                        Text("للقراءة العرضية", color = TextSec, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 20.dp, vertical = 0.dp))
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp).background(Color.Black, RoundedCornerShape(14.dp)).padding(4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            listOf("يمين لليسار", "يسار لليمين").forEach { option ->
+                                Box(Modifier.weight(1f).clip(RoundedCornerShape(10.dp)).background(if (horizontalDirection == option) accent else Color.Transparent).clickable { horizontalDirection = option }.padding(vertical = 12.dp), Alignment.Center) { Text(option, color = Color.White, fontSize = 13.sp) }
+                            }
+                        }
+                    }
+                    D2()
+                    Text("أثناء القراءة", color = accent, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp))
+                    SToggle("إبقاء الشاشة مضاءة", "منع إطفاء الشاشة أثناء القراءة", true) {}
+                    D2()
+                    SToggle("رقم الصفحة", "إظهار رقم الصفحة الحالية", totalPages > 0) {}
+                }
+            }
+        }
         if (showChapterList) {
             var newestFirst by remember { mutableStateOf(true) }
             ModalBottomSheet(onDismissRequest = { showChapterList = false }, containerColor = Color.Black, contentColor = Color.White, dragHandle = { BottomSheetDefaults.DragHandle(color = TextDim) }) {
