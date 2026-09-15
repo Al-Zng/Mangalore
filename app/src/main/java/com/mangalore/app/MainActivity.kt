@@ -875,7 +875,32 @@ private fun MangaListScreen(title: String, accent: Color, onBack: () -> Unit, lo
             EmptyState(Icons.Default.WifiOff, "لا توجد أعمال", "تعذّر تحميل القائمة")
         } else {
             LazyVerticalGrid(GridCells.Fixed(3), contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                items(items, key = { it.id }) { m -> SpringCard({ onPick(m) }) { Column { Box(Modifier.fillMaxWidth().aspectRatio(CoverAspect).clip(RoundedCornerShape(12.dp))) { Img(m.coverUrl, Modifier.fillMaxSize()) }; Spacer(Modifier.height(6.dp)); Text(m.title, color = TextPri, fontSize = 11.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, fontFamily = Font) } } }
+                items(items, key = { it.id }) { m ->
+                    SpringCard({ onPick(m) }) {
+                        Column {
+                            Box(Modifier.fillMaxWidth().aspectRatio(CoverAspect).clip(RoundedCornerShape(12.dp))) {
+                                Img(m.coverUrl, Modifier.fillMaxSize())
+                                if (m.latestChapter.isNotEmpty()) {
+                                    Surface(
+                                        color = Color.Black.copy(.72f),
+                                        shape = RoundedCornerShape(topStart = 8.dp),
+                                        modifier = Modifier.align(Alignment.BottomEnd)
+                                    ) {
+                                        Text(
+                                            m.latestChapter, color = Color.White, fontSize = 9.sp,
+                                            maxLines = 1, modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                                        )
+                                    }
+                                }
+                            }
+                            Spacer(Modifier.height(6.dp))
+                            Text(m.title, color = TextPri, fontSize = 11.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, fontFamily = Font)
+                            if (m.chapterDate.isNotEmpty()) {
+                                Text(m.chapterDate, color = TextDim, fontSize = 9.sp)
+                            }
+                        }
+                    }
+                }
                 item(span = { GridItemSpan(3) }) { Text("${items.size} عمل", color = TextDim, fontSize = 11.sp, fontFamily = Font, modifier = Modifier.fillMaxWidth().padding(20.dp), textAlign = TextAlign.Center) }
             }
         }
@@ -1208,7 +1233,7 @@ private fun ReaderScreen(
                 blocks.forEachIndexed { position, (index, images) ->
                     item(key = "chapter-header-$index") { Box(Modifier.fillMaxWidth().background(Brush.horizontalGradient(listOf(accent.copy(.22f), accent.copy(.06f), Color.Transparent))).padding(horizontal = 16.dp, vertical = 14.dp)) { Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) { Box(Modifier.width(CoverWidthCh).height(CoverHeightCh).clip(RoundedCornerShape(8.dp))) { Img(manga.coverUrl, Modifier.fillMaxSize()); Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(.82f)))).padding(bottom = 3.dp, top = 8.dp), Alignment.Center) { Text(manga.chapters[index].number, color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold) } }; Column { Text("الفصل ${manga.chapters[index].number}", color = accent, fontSize = 15.sp, fontWeight = FontWeight.Bold); if (displayedChapterTitle.isNotEmpty()) Text(displayedChapterTitle, color = TextSec, fontSize = 12.sp) } } } }
                     itemsIndexed(images, key = { i, url -> "$index-$i-$url" }) { _, url ->
-                        SubcomposeAsyncImage(model = ImageRequest.Builder(LocalContext.current).data(url).addHeader("Referer", "https://mangalik.net/").addHeader("User-Agent", "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/124.0.0.0").apply { if (CookieStore.has()) addHeader("Cookie", CookieStore.cfCookies) }.crossfade(false).build(), contentDescription = null, contentScale = ContentScale.FillWidth, modifier = Modifier.fillMaxWidth(), loading = { Box(Modifier.fillMaxWidth().height(270.dp), Alignment.Center) { CircularProgressIndicator(color = accent.copy(.5f), modifier = Modifier.size(30.dp), strokeWidth = 2.dp) } }, error = { failedImageUrls = failedImageUrls + url; Box(Modifier.fillMaxWidth().height(90.dp).background(Surface2), Alignment.Center) { Icon(Icons.Default.BrokenImage, null, tint = TextDim, modifier = Modifier.size(30.dp)) } })
+                        SubcomposeAsyncImage(model = ImageRequest.Builder(LocalContext.current).data(url).addHeader("Referer", manga.chapters.getOrNull(index)?.url?.takeIf { it.isNotBlank() } ?: chUrl).addHeader("User-Agent", "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36").apply { if (CookieStore.has()) addHeader("Cookie", CookieStore.cfCookies) }.crossfade(false).build(), contentDescription = null, contentScale = ContentScale.FillWidth, modifier = Modifier.fillMaxWidth(), loading = { Box(Modifier.fillMaxWidth().height(270.dp), Alignment.Center) { CircularProgressIndicator(color = accent.copy(.5f), modifier = Modifier.size(30.dp), strokeWidth = 2.dp) } }, error = { failedImageUrls = failedImageUrls + url; Box(Modifier.fillMaxWidth().height(90.dp).background(Surface2), Alignment.Center) { Icon(Icons.Default.BrokenImage, null, tint = TextDim, modifier = Modifier.size(30.dp)) } })
                     }
                     if (position == blocks.lastIndex) item(key = "chapter-loader-$index") { LaunchedEffect(index, blocks.size) { loadChapter(index - 1) }; if (index > 0) LinearProgressIndicator(Modifier.fillMaxWidth().padding(18.dp), color = accent) else Text("انتهت الفصول", color = TextDim, modifier = Modifier.fillMaxWidth().padding(24.dp), textAlign = TextAlign.Center) }
                 }
