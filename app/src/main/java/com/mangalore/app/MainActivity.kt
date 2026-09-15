@@ -126,11 +126,76 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+@Composable
+private fun SplashScreen() {
+    Box(Modifier.fillMaxSize().background(Bg), Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Image(painterResource(R.drawable.logo), "Mangalore", Modifier.size(150.dp), ContentScale.Fit)
+            Spacer(Modifier.height(20.dp))
+            CircularProgressIndicator(color = Accent, modifier = Modifier.size(28.dp), strokeWidth = 2.dp)
+        }
+    }
+}
+
+@Composable
+private fun AuthScreen(onSignedIn: () -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var register by remember { mutableStateOf(false) }
+    var name by remember { mutableStateOf("") }
+    var email by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf("") }
+    Box(Modifier.fillMaxSize().background(Bg).verticalScroll(rememberScrollState()), Alignment.Center) {
+        Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Image(painterResource(R.drawable.logo), "Mangalore", Modifier.size(150.dp), ContentScale.Fit)
+            Spacer(Modifier.height(18.dp))
+            Text(if (register) "إنشاء حساب جديد" else "تسجيل الدخول", color = TextPri, fontSize = 23.sp, fontWeight = FontWeight.Bold)
+            Text("احفظ مكتبتك وسجل القراءة على حسابك", color = TextSec, fontSize = 13.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 8.dp, bottom = 20.dp))
+            if (register) OutlinedTextField(name, { name = it }, label = { Text("الاسم") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            if (register) Spacer(Modifier.height(10.dp))
+            OutlinedTextField(email, { email = it }, label = { Text("البريد الإلكتروني") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            Spacer(Modifier.height(10.dp))
+            OutlinedTextField(password, { password = it }, label = { Text("كلمة المرور") }, singleLine = true, visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
+            if (error.isNotBlank()) Text(error, color = Red, fontSize = 12.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 12.dp))
+            Spacer(Modifier.height(18.dp))
+            Button(enabled = !busy && email.isNotBlank() && password.length >= 6 && (!register || name.isNotBlank()), onClick = {
+                busy = true; error = ""
+                scope.launch {
+                    val result = if (register) AuthStore.signUp(context, email.trim(), password, name.trim()) else AuthStore.signIn(context, email.trim(), password)
+                    busy = false
+                    result.onSuccess { onSignedIn() }.onFailure { error = it.message ?: "تعذر إكمال العملية" }
+                }
+            }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Accent)) {
+                if (busy) CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp), strokeWidth = 2.dp) else Text(if (register) "إنشاء الحساب" else "دخول", color = Color.White)
+            }
+            TextButton(onClick = { register = !register; error = "" }) { Text(if (register) "لديك حساب؟ سجل الدخول" else "ليس لديك حساب؟ أنشئ حسابًا", color = AccentLt) }
+        }
+    }
+}
+
 // ══════════════════════════════════════════════════════════════
 // APP ROOT
 // ══════════════════════════════════════════════════════════════
 @Composable
 private fun App() {
+    val context = LocalContext.current
+    var authReady by remember { mutableStateOf(false) }
+    var signedIn by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        AuthStore.load(context)
+        signedIn = AuthStore.hasSession()
+        authReady = true
+    }
+    if (!authReady) {
+        SplashScreen()
+        return
+    }
+    if (!signedIn) {
+        AuthScreen(onSignedIn = { signedIn = true })
+        return
+    }
     var accent  by remember { mutableStateOf(Accent) }
     var amoled  by remember { mutableStateOf(false) }
     val appBg   = if (amoled) Black else Bg
@@ -1505,9 +1570,9 @@ private fun ProfileScreen(accent: Color, onBack: () -> Unit) {
                     Icon(Icons.Default.Person, null, tint=TextDim, modifier=Modifier.size(40.dp))
                 }
                 Spacer(Modifier.height(16.dp))
-                Text("قراءة دون حساب", color=TextSec, fontSize=15.sp, fontWeight=FontWeight.Medium)
+                Text(AuthStore.displayName.ifBlank { "قارئ مانجالور" }, color=TextPri, fontSize=18.sp, fontWeight=FontWeight.Bold)
                 Spacer(Modifier.height(6.dp))
-                Text("يمكنك الاستمتاع بالقراءة دون تسجيل دخول", color=TextDim, fontSize=13.sp, textAlign=TextAlign.Center)
+                Text("ملفك العام ومكتبتك وسجل قراءتك محفوظة على حسابك", color=TextDim, fontSize=13.sp, textAlign=TextAlign.Center)
             }
         }
     }
@@ -1608,10 +1673,19 @@ private fun Drawer(accent:Color, cur:Dest, onClose:()->Unit, onNav:(String)->Uni
                 Box(Modifier.fillMaxWidth().height(150.dp)
                     .background(Brush.verticalGradient(listOf(accent.copy(.22f), Bg)))) {
                     Column(Modifier.align(Alignment.Center).padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Image(painterResource(R.drawable.logo), "Mangalore",
-                            modifier = Modifier.size(width = 126.dp, height = 82.dp),
-                            contentScale = ContentScale.Fit)
-                        Spacer(Modifier.height(8.dp))
+                        Row(
+                            Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).clickable { onNav("profile") }.padding(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Box(Modifier.size(48.dp).clip(CircleShape).background(Surface3), Alignment.Center) {
+                                Icon(Icons.Default.Person, null, tint = TextSec, modifier = Modifier.size(28.dp))
+                            }
+                            Column(Modifier.weight(1f)) {
+                                Text(AuthStore.displayName.ifBlank { "قارئ مانجالور" }, color = TextPri, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                                Text("الملف الشخصي", color = TextSec, fontSize = 11.sp)
+                            }
+                        }
                     }
                 }
                 LazyColumn(Modifier.weight(1f).padding(horizontal=8.dp, vertical=8.dp)) {
