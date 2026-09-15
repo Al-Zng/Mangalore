@@ -178,8 +178,8 @@ private fun App() {
                     when (d) {
                         is Dest.Home -> HomeScreen(accent, { drawer = true }, { push(Dest.Search) }) { push(Dest.Detail(it)) }
                         is Dest.Search -> SearchScreen(accent, ::pop) { push(Dest.Detail(it)) }
-                        is Dest.AllManga -> MangaListScreen("كل المانجات", accent, ::pop, { Scraper.fetchAll(it) }) { push(Dest.Detail(it)) }
-                        is Dest.LatestManga -> MangaListScreen("أحدث المانجات", accent, ::pop, { Scraper.fetchLatest(it) }) { push(Dest.Detail(it)) }
+                        is Dest.AllManga -> MangaListScreen("كل المانجا", accent, ::pop, { Scraper.fetchAll(it) }) { push(Dest.Detail(it)) }
+                        is Dest.LatestManga -> MangaListScreen("أحدث المانجا", accent, ::pop, { Scraper.fetchLatest(it) }) { push(Dest.Detail(it)) }
                         is Dest.Library -> LibraryScreen(accent, lib, ::pop, { push(Dest.Detail(it)) }) { lib.remove(it) }
                         is Dest.History -> HistoryScreen(accent, hist, ::pop, { p -> push(Dest.Reader(p.manga.chapters[p.chapterIndex].url, "الفصل ${p.manga.chapters[p.chapterIndex].number}", p.manga, p.chapterIndex, p.page)) }) { hist = emptyList() }
                         is Dest.Profile -> ProfileScreen(accent, ::pop)
@@ -854,7 +854,19 @@ private fun MangaListScreen(title: String, accent: Color, onBack: () -> Unit, lo
     var items by remember { mutableStateOf<List<MangaItem>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     val scope = rememberCoroutineScope()
-    fun load() { loading = true; scope.launch { items = loadPage(1); loading = false } }
+    fun load() { loading = true; scope.launch {
+        val loaded = mutableListOf<MangaItem>()
+        // The site returns 10 cards per page; keep requesting pages until the
+        // archive is exhausted so these screens are not limited to page one.
+        for (page in 1..100) {
+            val next = loadPage(page)
+            if (next.isEmpty()) break
+            loaded += next
+            if (next.size < 10) break
+        }
+        items = loaded.distinctBy { it.url }
+        loading = false
+    } }
     LaunchedEffect(Unit) { load() }
     Column(Modifier.fillMaxSize()) {
         TopBar(title, accent, onBack)
@@ -1576,8 +1588,8 @@ private fun Drawer(accent:Color, cur:Dest, onClose:()->Unit, onNav:(String)->Uni
                 LazyColumn(Modifier.weight(1f).padding(horizontal=8.dp, vertical=8.dp)) {
                     item { DSec("التنقل", accent) }
                     item { DItem("الرئيسية",    Icons.Default.Home,          "home",     cur is Dest.Home,     onNav) }
-                    item { DItem("كل المانجات",  Icons.Default.GridView,       "all",      cur is Dest.AllManga, onNav) }
-                    item { DItem("أحدث المانجات", Icons.Default.NewReleases,    "latest",   cur is Dest.LatestManga, onNav) }
+                    item { DItem("كل المانجا",    Icons.Default.GridView,       "all",      cur is Dest.AllManga, onNav) }
+                    item { DItem("أحدث المانجا",  Icons.Default.NewReleases,    "latest",   cur is Dest.LatestManga, onNav) }
                     item { DItem("البحث",        Icons.Default.Search,        "search",   cur is Dest.Search,   onNav) }
                     item { DItem("مكتبتي",       Icons.Default.LibraryBooks,  "library",  cur is Dest.Library,  onNav) }
                     item { DItem("سجل القراءة",  Icons.Default.History,       "history",  cur is Dest.History,  onNav) }
