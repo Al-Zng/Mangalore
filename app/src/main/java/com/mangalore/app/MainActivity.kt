@@ -1,6 +1,7 @@
 package com.mangalore.app
 
 import android.annotation.SuppressLint
+import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.os.Bundle
@@ -118,6 +119,7 @@ data class ReadingProgress(val item: MangaItem, val manga: MangaDetail, val chap
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        CookieStore.restore(this)
         setContent { App() }
     }
 }
@@ -127,6 +129,7 @@ class MainActivity : ComponentActivity() {
 // ══════════════════════════════════════════════════════════════
 @Composable
 private fun App() {
+    val appContext = LocalContext.current
     var accent  by remember { mutableStateOf(Accent) }
     var amoled  by remember { mutableStateOf(false) }
     val appBg   = if (amoled) Black else Bg
@@ -204,6 +207,7 @@ private fun App() {
                         onSolved = { cookies ->
                             CookieStore.cfCookies = cookies
                             CookieStore.cfSolved = true
+                            CookieStore.persist(appContext)
                             readerRefresh++
                         }
                     )
@@ -241,7 +245,7 @@ private fun App() {
                 if (showCf) {
                     CfDialog(
                         onSolved = { c -> CookieStore.cfCookies = c; CookieStore.cfSolved = true
-                            showCf = false; readerRefresh++; toast = "✓ تم التحقق بنجاح" },
+                            showCf = false; CookieStore.persist(appContext); readerRefresh++; toast = "✓ تم التحقق بنجاح" },
                         onSkip   = { showCf = false }
                     )
                 }
@@ -392,9 +396,9 @@ private fun CfProbe(chapterUrl: String, onChallenge: () -> Unit, onSolved: (Stri
                         }
                     }
                 }
-                // Open the actual chapter page in the hidden WebView. On phones this
-                // often passes Cloudflare automatically even when OkHttp is blocked.
-                loadUrl(chapterUrl)
+                // Match the known-working flow: warm Cloudflare cookies on the
+                // stable challenge page, then close this hidden WebView.
+                loadUrl(Scraper.cfChallengeUrl())
             }
         },
         modifier = Modifier.size(1.dp).alpha(0f),
@@ -1204,7 +1208,7 @@ private fun ReaderScreen(
                 blocks.forEachIndexed { position, (index, images) ->
                     item(key = "chapter-header-$index") { Box(Modifier.fillMaxWidth().background(Brush.horizontalGradient(listOf(accent.copy(.22f), accent.copy(.06f), Color.Transparent))).padding(horizontal = 16.dp, vertical = 14.dp)) { Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) { Box(Modifier.width(CoverWidthCh).height(CoverHeightCh).clip(RoundedCornerShape(8.dp))) { Img(manga.coverUrl, Modifier.fillMaxSize()); Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(.82f)))).padding(bottom = 3.dp, top = 8.dp), Alignment.Center) { Text(manga.chapters[index].number, color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold) } }; Column { Text("الفصل ${manga.chapters[index].number}", color = accent, fontSize = 15.sp, fontWeight = FontWeight.Bold); if (displayedChapterTitle.isNotEmpty()) Text(displayedChapterTitle, color = TextSec, fontSize = 12.sp) } } } }
                     itemsIndexed(images, key = { i, url -> "$index-$i-$url" }) { _, url ->
-                        SubcomposeAsyncImage(model = ImageRequest.Builder(LocalContext.current).data(url).addHeader("Referer", chUrl).addHeader("User-Agent", "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/124.0.0.0").apply { if (CookieStore.has()) addHeader("Cookie", CookieStore.cfCookies) }.crossfade(false).build(), contentDescription = null, contentScale = ContentScale.FillWidth, modifier = Modifier.fillMaxWidth(), loading = { Box(Modifier.fillMaxWidth().height(270.dp), Alignment.Center) { CircularProgressIndicator(color = accent.copy(.5f), modifier = Modifier.size(30.dp), strokeWidth = 2.dp) } }, error = { failedImageUrls = failedImageUrls + url; Box(Modifier.fillMaxWidth().height(90.dp).background(Surface2), Alignment.Center) { Icon(Icons.Default.BrokenImage, null, tint = TextDim, modifier = Modifier.size(30.dp)) } })
+                        SubcomposeAsyncImage(model = ImageRequest.Builder(LocalContext.current).data(url).addHeader("Referer", "https://mangalik.net/").addHeader("User-Agent", "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/124.0.0.0").apply { if (CookieStore.has()) addHeader("Cookie", CookieStore.cfCookies) }.crossfade(false).build(), contentDescription = null, contentScale = ContentScale.FillWidth, modifier = Modifier.fillMaxWidth(), loading = { Box(Modifier.fillMaxWidth().height(270.dp), Alignment.Center) { CircularProgressIndicator(color = accent.copy(.5f), modifier = Modifier.size(30.dp), strokeWidth = 2.dp) } }, error = { failedImageUrls = failedImageUrls + url; Box(Modifier.fillMaxWidth().height(90.dp).background(Surface2), Alignment.Center) { Icon(Icons.Default.BrokenImage, null, tint = TextDim, modifier = Modifier.size(30.dp)) } })
                     }
                     if (position == blocks.lastIndex) item(key = "chapter-loader-$index") { LaunchedEffect(index, blocks.size) { loadChapter(index - 1) }; if (index > 0) LinearProgressIndicator(Modifier.fillMaxWidth().padding(18.dp), color = accent) else Text("انتهت الفصول", color = TextDim, modifier = Modifier.fillMaxWidth().padding(24.dp), textAlign = TextAlign.Center) }
                 }
