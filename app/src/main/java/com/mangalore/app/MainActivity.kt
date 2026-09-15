@@ -131,7 +131,7 @@ class MainActivity : ComponentActivity() {
 private fun SplashScreen() {
     Box(Modifier.fillMaxSize().background(Bg), Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Image(painterResource(R.drawable.logo), "Mangalore", Modifier.size(150.dp), ContentScale.Fit)
+            Image(painterResource(R.drawable.logo), "Mangalore", Modifier.size(150.dp), contentScale = ContentScale.Fit)
             Spacer(Modifier.height(20.dp))
             CircularProgressIndicator(color = Accent, modifier = Modifier.size(28.dp), strokeWidth = 2.dp)
         }
@@ -150,7 +150,7 @@ private fun AuthScreen(onSignedIn: () -> Unit) {
     var error by remember { mutableStateOf("") }
     Box(Modifier.fillMaxSize().background(Bg).verticalScroll(rememberScrollState()), Alignment.Center) {
         Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Image(painterResource(R.drawable.logo), "Mangalore", Modifier.size(150.dp), ContentScale.Fit)
+            Image(painterResource(R.drawable.logo), "Mangalore", Modifier.size(150.dp), contentScale = ContentScale.Fit)
             Spacer(Modifier.height(18.dp))
             Text(if (register) "إنشاء حساب جديد" else "تسجيل الدخول", color = TextPri, fontSize = 23.sp, fontWeight = FontWeight.Bold)
             Text("احفظ مكتبتك وسجل القراءة على حسابك", color = TextSec, fontSize = 13.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 8.dp, bottom = 20.dp))
