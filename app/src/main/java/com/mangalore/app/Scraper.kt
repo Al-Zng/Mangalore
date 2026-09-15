@@ -230,7 +230,8 @@ object Scraper {
     // Returns (images, needsCfBypass)
     suspend fun fetchChapterImages(url: String): Pair<List<String>, Boolean> =
         withContext(Dispatchers.IO) {
-            if (!CookieStore.cfSolved) return@withContext Pair(emptyList(), true)
+            // Try the chapter directly first. Some phones can access the chapter
+            // without a Cloudflare cookie, so never block this fast path on WebView.
             val html = get(url) ?: return@withContext Pair(emptyList(), true)
             if (isCf(html))        return@withContext Pair(emptyList(), true)
             val doc = Jsoup.parse(html)
