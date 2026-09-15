@@ -185,14 +185,17 @@ private fun App() {
                         is Dest.Settings -> SettingsScreen(accent, amoled, { amoled = it }, { accent = it }, ::pop)
                         is Dest.Detail -> DetailLoadingScreen(d.item, accent, lib, ::pop) { replaceTop(Dest.DetailFull(it)) }
                         is Dest.DetailFull -> DetailScreen(
-                            d.d, accent, lib, ::pop,
+                            d.d, accent, lib, hist, ::pop,
                             onChapter = { ch, index ->
                                 val asItem = MangaItem(d.d.slug, d.d.title, d.d.slug, d.d.coverUrl, d.d.coverFull, d.d.url)
                                 hist = listOf(ReadingProgress(asItem, d.d, index)) + hist.filterNot { it.manga.url == d.d.url && it.chapterIndex == index }
                                 push(Dest.Reader(ch.url, ch.title.ifEmpty { "الفصل ${ch.number}" }, d.d, index, 1))
+                            },
+                            onContinue = { saved ->
+                                push(Dest.Reader(saved.manga.chapters[saved.chapterIndex].url, "الفصل ${saved.manga.chapters[saved.chapterIndex].number}", saved.manga, saved.chapterIndex, saved.page))
                             }
                         )
-                        is Dest.Reader -> key(readerRefresh) { ReaderScreen(
+                        is Dest.Reader -> key("${d.url}-${d.chapterIndex}-$readerRefresh") { ReaderScreen(
                             d.url, d.chTitle, d.manga, d.chapterIndex, accent, ::pop, d.page,
                             onProgress = { page, total, completed -> hist = hist.map { p -> if (p.manga.url == d.manga.url && p.chapterIndex == d.chapterIndex) p.copy(page = page, totalPages = total, completed = completed) else p } },
                             onCfNeeded = { showCf = true }
@@ -925,7 +928,8 @@ private fun DetailLoadingScreen(
 @Composable
 private fun DetailScreen(
     d: MangaDetail, accent: Color, lib: MutableList<MangaItem>,
-    onBack: () -> Unit, onChapter: (ChapterItem, Int) -> Unit
+    history: List<ReadingProgress>, onBack: () -> Unit,
+    onChapter: (ChapterItem, Int) -> Unit, onContinue: (ReadingProgress) -> Unit
 ) {
     var tab   by remember { mutableStateOf(0) }
     var newestFirst by remember { mutableStateOf(true) }
@@ -987,12 +991,17 @@ private fun DetailScreen(
                 Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (d.chapters.isNotEmpty()) {
-                        Button({ onChapter(d.chapters.last(), d.chapters.lastIndex) }, Modifier.weight(1f),
+                        val saved = history.filter { it.manga.url == d.url && !it.completed }
+                            .maxByOrNull { it.chapterIndex }
+                        Button({
+                            if (saved != null && saved.chapterIndex in d.chapters.indices) onContinue(saved)
+                            else onChapter(d.chapters.last(), d.chapters.lastIndex)
+                        }, Modifier.weight(1f),
                             colors = ButtonDefaults.buttonColors(containerColor = accent),
                             shape = RoundedCornerShape(10.dp)) {
                             Icon(Icons.Default.PlayArrow, null, Modifier.size(16.dp))
                             Spacer(Modifier.width(4.dp))
-                            Text("ابدأ القراءة", fontSize = 13.sp, fontFamily = Font)
+                            Text(if (saved != null) "أكمل · ص${saved.page}" else "ابدأ القراءة", fontSize = 13.sp, fontFamily = Font)
                         }
                         if (d.chapters.size > 1) {
                                 Button({ onChapter(d.chapters.first(), 0) }, Modifier.wrapContentWidth(),
@@ -1182,7 +1191,7 @@ private fun ReaderScreen(
         }
     }
     fun retry() { blocks = emptyList(); loadedIndices = emptySet(); failedImageUrls = emptySet(); loadChapter(chapterIndex, true) }
-    LaunchedEffect(chUrl) { retry() }
+    LaunchedEffect(chUrl, chapterIndex) { retry() }
     LaunchedEffect(state, initialPage) { if (state == 1 && initialPage > 1) listState.scrollToItem(initialPage.coerceAtMost((listState.layoutInfo.totalItemsCount - 1).coerceAtLeast(0))) }
     LaunchedEffect(currentPage, totalPages, state) { if (state == 1 && totalPages > 0) onProgress(currentPage, totalPages, currentPage >= totalPages) }
     LaunchedEffect(autoScrollEnabled, autoScrollSpeed) {
@@ -1218,12 +1227,39 @@ private fun ReaderScreen(
                 }
                 val horizontal = readingMode == "عرضي"
                 if (horizontal) {
+                    val horizontalImages = blocks.flatMap { it.second }
                     LazyRow(
-                        modifier = Modifier.fillMaxSize().clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { bars = !bars },
+                        modifier = Modifier.fillMaxSize(),
                         state = listState,
-                        reverseLayout = horizontalDirection == "يسار لليمين",
-                        content = readerContent
-                    )
+                        userScrollEnabled = false,
+                        reverseLayout = false
+                    ) {
+                        itemsIndexed(horizontalImages, key = { i, url -> "horizontal-$i-$url" }) { page, url ->
+                            Box(
+                                Modifier.fillParentMaxWidth().fillMaxHeight().pointerInput(page, horizontalImages.size, horizontalDirection) {
+                                    detectTapGestures { tap ->
+                                        val forward = if (horizontalDirection == "يمين لليسار") tap.x < size.width / 2f else tap.x > size.width / 2f
+                                        val target = (page + if (forward) 1 else -1).coerceIn(0, horizontalImages.lastIndex)
+                                        scope.launch { listState.animateScrollToItem(target) }
+                                    }
+                                },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                SubcomposeAsyncImage(
+                                    model = ImageRequest.Builder(LocalContext.current).data(url)
+                                        .addHeader("Referer", "https://mangalik.net/")
+                                        .addHeader("User-Agent", "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/124.0.0.0")
+                                        .apply { if (CookieStore.has()) addHeader("Cookie", CookieStore.cfCookies) }
+                                        .crossfade(false).build(),
+                                    contentDescription = null,
+                                    contentScale = ContentScale.Fit,
+                                    modifier = Modifier.fillMaxWidth().fillMaxHeight(.92f),
+                                    loading = { CircularProgressIndicator(color = accent.copy(.6f)) },
+                                    error = { failedImageUrls = failedImageUrls + url; Icon(Icons.Default.BrokenImage, null, tint = TextDim, modifier = Modifier.size(42.dp)) }
+                                )
+                            }
+                        }
+                    }
                 } else {
                     LazyColumn(
                         modifier = Modifier.fillMaxSize().clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { bars = !bars },
