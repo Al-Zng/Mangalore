@@ -366,8 +366,8 @@ private fun CfProbe(chapterUrl: String, onChallenge: () -> Unit, onSolved: (Stri
                 CookieManager.getInstance().setAcceptCookie(true)
                 CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
                 webViewClient = object : WebViewClient() {
-                    override fun onPageFinished(v: WebView?, url: String?) {
-                        val title = v?.title.orEmpty()
+                                override fun onPageFinished(v: WebView?, url: String?) {
+                                    val title = v?.title.orEmpty()
                         val challengeText = listOf(
                             "Just a moment", "Attention Required", "Checking your browser",
                             "لحظة واحدة", "جارٍ التحقق", "تحقق من أنك لست روبوتًا", "تحقق من الأمان"
@@ -378,10 +378,11 @@ private fun CfProbe(chapterUrl: String, onChallenge: () -> Unit, onSolved: (Stri
                                 Handler(Looper.getMainLooper()).postDelayed({
                                     if (!CookieStore.cfSolved) onChallenge()
                                 }, 4500L)
-                            } else if (url?.contains("mangalik.net") == true) {
-                                CookieManager.getInstance().getCookie("https://mangalik.net")
-                                    ?.takeIf { it.isNotBlank() }?.let(onSolved)
-                            }
+                                } else if (url?.contains("mangalik.net") == true) {
+                                    // A chapter can be accessible directly without a CF cookie.
+                                    // Treat a successful page load as success, then dispose the WebView.
+                                    onSolved(CookieManager.getInstance().getCookie("https://mangalik.net").orEmpty())
+                                }
                         }
                         if (challengeText.any { title.contains(it, ignoreCase = true) }) handle(title)
                         else v?.evaluateJavascript("document.body ? document.body.innerText : ''") { body ->
@@ -394,7 +395,13 @@ private fun CfProbe(chapterUrl: String, onChallenge: () -> Unit, onSolved: (Stri
                 loadUrl(chapterUrl)
             }
         },
-        modifier = Modifier.size(1.dp).alpha(0f)
+        modifier = Modifier.size(1.dp).alpha(0f),
+        onRelease = { webView ->
+            webView.stopLoading()
+            webView.clearHistory()
+            webView.removeAllViews()
+            webView.destroy()
+        }
     )
 }
 
