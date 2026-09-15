@@ -79,22 +79,26 @@ object Scraper {
 
     fun cfChallengeUrl() = CF_URL
     fun searchUrl(q: String) = "$BASE/?s=${q.trim().replace(" ", "+")}&post_type=wp-manga"
-    // The site's canonical manga archive is /manga/ (the /manga-list/ path
-    // is not the page linked from the site's navigation and returns no archive
-    // items on the current deployment).
-    fun allUrl(page: Int = 1) = if (page <= 1) "$BASE/manga/" else "$BASE/manga/page/$page/"
+    private fun archiveUrl(page: Int, order: String): String {
+        val path = if (page <= 1) "$BASE/manga/" else "$BASE/manga/page/$page/"
+        return "$path?m_orderby=$order"
+    }
 
-    // The home page is the site's latest-updates feed. Its .page-item-detail
-    // entries are the same cards used by the archive parser, and the captured
-    // site page confirms that they are ordered by newest chapter/update.
-    fun latestUrl(page: Int = 1) = if (page <= 1) BASE else "$BASE/page/$page/"
+    // The archive defaults to latest updates, so explicitly request alphabetic
+    // order for the distinct "all manga" screen.
+    fun allUrl(page: Int = 1) = archiveUrl(page, "alphabet")
+
+    // The site's archive exposes the latest-updates list through this explicit
+    // Madara ordering option. Keeping it separate from allUrl prevents the two
+    // screens from returning the same default-sorted cards.
+    fun latestUrl(page: Int = 1) = archiveUrl(page, "latest")
 
     suspend fun fetchAll(page: Int = 1): List<MangaItem> = withContext(Dispatchers.IO) {
         val html = get(allUrl(page)) ?: return@withContext emptyList()
         if (isCf(html)) return@withContext emptyList()
         parseMangaList(Jsoup.parse(html))
     }
-    fun popularUrl(page: Int = 1) = "$BASE/manga-list/?status=&type=&order=trending&page=$page"
+    fun popularUrl(page: Int = 1) = archiveUrl(page, "trending")
 
     // ── Upgrade thumbnail URL to full-size ────────────────────
     fun fullSizeUrl(url: String): String {
