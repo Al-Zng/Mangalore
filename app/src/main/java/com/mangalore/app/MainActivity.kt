@@ -199,6 +199,7 @@ private fun App() {
 
                 if (cur is Dest.Reader && !CookieStore.cfSolved && !showCf) {
                     CfProbe(
+                        chapterUrl = (cur as Dest.Reader).url,
                         onChallenge = { showCf = true },
                         onSolved = { cookies ->
                             CookieStore.cfCookies = cookies
@@ -353,7 +354,7 @@ private fun CfDialog(onSolved: (String) -> Unit, onSkip: () -> Unit) {
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
-private fun CfProbe(onChallenge: () -> Unit, onSolved: (String) -> Unit) {
+private fun CfProbe(chapterUrl: String, onChallenge: () -> Unit, onSolved: (String) -> Unit) {
     AndroidView(
         factory = { ctx ->
             WebView(ctx).apply {
@@ -388,7 +389,9 @@ private fun CfProbe(onChallenge: () -> Unit, onSolved: (String) -> Unit) {
                         }
                     }
                 }
-                loadUrl(Scraper.cfChallengeUrl())
+                // Open the actual chapter page in the hidden WebView. On phones this
+                // often passes Cloudflare automatically even when OkHttp is blocked.
+                loadUrl(chapterUrl)
             }
         },
         modifier = Modifier.size(1.dp).alpha(0f)
@@ -1179,7 +1182,14 @@ private fun ReaderScreen(
     Box(Modifier.fillMaxSize().background(Black)) {
         when (state) {
             0 -> Box(Modifier.fillMaxSize(), Alignment.Center) { Column(horizontalAlignment = Alignment.CenterHorizontally) { CircularProgressIndicator(color = accent); Spacer(Modifier.height(14.dp)); Text("جاري تحميل الفصل...", color = TextSec) } }
-            2 -> Box(Modifier.fillMaxSize(), Alignment.Center) { Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) { CircularProgressIndicator(color = accent); Spacer(Modifier.height(16.dp)); Text("جارٍ التحقق من الأمان تلقائياً", color = TextPri, fontSize = 17.sp, fontWeight = FontWeight.Bold, fontFamily = Font); Spacer(Modifier.height(8.dp)); Text("يعمل التحقق في الخلفية، وسيظهر التحدي فقط إذا تعذّر إكماله تلقائياً", color = TextSec, textAlign = TextAlign.Center, fontFamily = Font); Spacer(Modifier.height(24.dp)); OutlinedButton(onBack, Modifier.fillMaxWidth()) { Text("رجوع", color = TextSec, fontFamily = Font) } } }
+            2 -> Box(Modifier.fillMaxSize(), Alignment.Center) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(58.dp),
+                    color = accent,
+                    trackColor = Surface3,
+                    strokeWidth = 5.dp
+                )
+            }
             3 -> Box(Modifier.fillMaxSize(), Alignment.Center) { Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) { Icon(Icons.Default.CloudOff, null, tint = Red, modifier = Modifier.size(52.dp)); Text("تعذّر تحميل الفصل", color = TextSec); Button(::retry, colors = ButtonDefaults.buttonColors(containerColor = accent)) { Text("إعادة المحاولة", color = Color.White) } } }
             else -> LazyColumn(modifier = Modifier.fillMaxSize().clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { bars = !bars }, state = listState) {
                 blocks.forEachIndexed { position, (index, images) ->
