@@ -79,8 +79,15 @@ object Scraper {
 
     fun cfChallengeUrl() = CF_URL
     fun searchUrl(q: String) = "$BASE/?s=${q.trim().replace(" ", "+")}&post_type=wp-manga"
-    fun latestUrl(page: Int = 1) = "$BASE/manga-list/?status=&type=&order=latest&page=$page"
-    fun allUrl(page: Int = 1) = "$BASE/manga-list/?page=$page"
+    // The site's canonical manga archive is /manga/ (the /manga-list/ path
+    // is not the page linked from the site's navigation and returns no archive
+    // items on the current deployment).
+    fun allUrl(page: Int = 1) = if (page <= 1) "$BASE/manga/" else "$BASE/manga/page/$page/"
+
+    // The home page is the site's latest-updates feed. Its .page-item-detail
+    // entries are the same cards used by the archive parser, and the captured
+    // site page confirms that they are ordered by newest chapter/update.
+    fun latestUrl(page: Int = 1) = if (page <= 1) BASE else "$BASE/page/$page/"
 
     suspend fun fetchAll(page: Int = 1): List<MangaItem> = withContext(Dispatchers.IO) {
         val html = get(allUrl(page)) ?: return@withContext emptyList()
