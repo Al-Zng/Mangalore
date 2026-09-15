@@ -1234,7 +1234,9 @@ private fun ReaderScreen(
                                 scaleX = zoom; scaleY = zoom
                             }, loading = { Box(Modifier.fillMaxWidth().height(270.dp), Alignment.Center) { CircularProgressIndicator(color = accent.copy(.5f), modifier = Modifier.size(30.dp), strokeWidth = 2.dp) } }, error = { failedImageUrls = failedImageUrls + url; Box(Modifier.fillMaxWidth().height(90.dp).background(Surface2), Alignment.Center) { Icon(Icons.Default.BrokenImage, null, tint = TextDim, modifier = Modifier.size(30.dp)) } })
                     }
-                    if (position == blocks.lastIndex) item(key = "chapter-loader-$index") { LaunchedEffect(index, blocks.size) { loadChapter(index - 1) }; if (index > 0) LinearProgressIndicator(Modifier.fillMaxWidth().padding(18.dp), color = accent) else Text("انتهت الفصول", color = TextDim, modifier = Modifier.fillMaxWidth().padding(24.dp), textAlign = TextAlign.Center) }
+                    if (position == blocks.lastIndex) item(key = "chapter-loader-$index") {
+                        Text("انتهى الفصل", color = TextDim, modifier = Modifier.fillMaxWidth().padding(24.dp), textAlign = TextAlign.Center)
+                    }
                 }
                 item { Spacer(Modifier.height(80.dp)) }
                 }
@@ -1251,9 +1253,16 @@ private fun ReaderScreen(
                             Box(
                                 Modifier.fillParentMaxWidth().fillMaxHeight().pointerInput(page, horizontalImages.size, horizontalDirection) {
                                     detectTapGestures { tap ->
-                                        val forward = if (horizontalDirection == "يمين لليسار") tap.x < size.width / 2f else tap.x > size.width / 2f
-                                        val target = (page + if (forward) 1 else -1).coerceIn(0, horizontalImages.lastIndex)
-                                        scope.launch { listState.animateScrollToItem(target) }
+                                        val edge = size.width * 0.28f
+                                        val onLeft = tap.x < edge
+                                        val onRight = tap.x > size.width - edge
+                                        if (!onLeft && !onRight) {
+                                            bars = !bars
+                                        } else {
+                                            val forward = if (horizontalDirection == "يمين لليسار") onLeft else onRight
+                                            val target = (page + if (forward) 1 else -1).coerceIn(0, horizontalImages.lastIndex)
+                                            scope.launch { listState.animateScrollToItem(target) }
+                                        }
                                     }
                                 },
                                 contentAlignment = Alignment.Center
