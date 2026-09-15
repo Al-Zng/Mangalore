@@ -1156,21 +1156,37 @@ private fun ReaderScreen(
     var state by remember { mutableStateOf(0) }
     var bars by remember { mutableStateOf(true) }
     val listState = rememberLazyListState()
-    val currentPage by remember { derivedStateOf {
-        val visible = listState.firstVisibleItemIndex
-        var pages = 0
-        var headers = 0
-        for ((_, images) in blocks) {
-            for (i in images.indices) if (headers + pages + i + 1 >= visible) return@derivedStateOf maxOf(1, pages + i + 1)
-            pages += images.size; headers++
-        }
-        maxOf(1, pages)
-    } }
-    val totalPages by remember { derivedStateOf { blocks.sumOf { it.second.size } } }
-    var showChapterList by remember { mutableStateOf(false) }
-    var showReaderSettings by remember { mutableStateOf(false) }
     var readingMode by remember { mutableStateOf("طولي") }
     var horizontalDirection by remember { mutableStateOf("يمين لليسار") }
+    val activeChapterBlock by remember { derivedStateOf {
+        if (blocks.isEmpty()) 0 else {
+            val visible = listState.firstVisibleItemIndex
+            var cursor = 0
+            var found = 0
+            blocks.forEachIndexed { index, block ->
+                val count = if (readingMode == "عرضي") block.second.size else block.second.size + 1
+                if (visible >= cursor) found = index
+                cursor += count
+            }
+            found.coerceIn(0, blocks.lastIndex)
+        }
+    } }
+    val currentPage by remember { derivedStateOf {
+        if (blocks.isEmpty()) 1 else {
+            val visible = listState.firstVisibleItemIndex
+            var cursor = 0
+            blocks.forEachIndexed { index, block ->
+                val offset = if (readingMode == "عرضي") 0 else 1
+                val end = cursor + offset + block.second.size
+                if (visible < end || index == blocks.lastIndex) return@derivedStateOf (visible - cursor - offset + 1).coerceIn(1, block.second.size)
+                cursor += offset + block.second.size
+            }
+            1
+        }
+    } }
+    val totalPages by remember { derivedStateOf { blocks.getOrNull(activeChapterBlock)?.second?.size ?: 0 } }
+    var showChapterList by remember { mutableStateOf(false) }
+    var showReaderSettings by remember { mutableStateOf(false) }
     var zoomImages by remember { mutableStateOf(false) }
     var keepScreenOn by remember { mutableStateOf(true) }
     var showPageNumber by remember { mutableStateOf(true) }
@@ -1184,8 +1200,8 @@ private fun ReaderScreen(
         else activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         onDispose { }
     }
-    val displayedChapterNum = remember(blocks) { blocks.firstOrNull()?.first?.let { manga.chapters.getOrNull(it)?.number } ?: "" }
-    val displayedChapterTitle = remember(blocks) { blocks.firstOrNull()?.first?.let { i -> manga.chapters.getOrNull(i)?.let { c -> if (c.title.isNotEmpty() && c.title != "الفصل ${c.number}") c.title else "" } } ?: chTitle }
+    val displayedChapterNum = remember(blocks, activeChapterBlock) { blocks.getOrNull(activeChapterBlock)?.first?.let { manga.chapters.getOrNull(it)?.number } ?: "" }
+    val displayedChapterTitle = remember(blocks, activeChapterBlock) { blocks.getOrNull(activeChapterBlock)?.first?.let { i -> manga.chapters.getOrNull(i)?.let { c -> if (c.title.isNotEmpty() && c.title != "الفصل ${c.number}") c.title else "" } } ?: chTitle }
 
     fun loadChapter(index: Int, reset: Boolean = false) {
         if (index !in manga.chapters.indices || (!reset && index in loadedIndices)) return
@@ -1235,7 +1251,9 @@ private fun ReaderScreen(
                             }, loading = { Box(Modifier.fillMaxWidth().height(270.dp), Alignment.Center) { CircularProgressIndicator(color = accent.copy(.5f), modifier = Modifier.size(30.dp), strokeWidth = 2.dp) } }, error = { failedImageUrls = failedImageUrls + url; Box(Modifier.fillMaxWidth().height(90.dp).background(Surface2), Alignment.Center) { Icon(Icons.Default.BrokenImage, null, tint = TextDim, modifier = Modifier.size(30.dp)) } })
                     }
                     if (position == blocks.lastIndex) item(key = "chapter-loader-$index") {
-                        Text("انتهى الفصل", color = TextDim, modifier = Modifier.fillMaxWidth().padding(24.dp), textAlign = TextAlign.Center)
+                        LaunchedEffect(index, blocks.size) { if (readingMode == "طولي") loadChapter(index - 1) }
+                        if (index > 0) LinearProgressIndicator(Modifier.fillMaxWidth().padding(18.dp), color = accent)
+                        else Text("انتهت الفصول", color = TextDim, modifier = Modifier.fillMaxWidth().padding(24.dp), textAlign = TextAlign.Center)
                     }
                 }
                 item { Spacer(Modifier.height(80.dp)) }
