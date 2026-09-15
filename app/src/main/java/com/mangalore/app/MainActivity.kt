@@ -1001,7 +1001,7 @@ private fun DetailScreen(
                             shape = RoundedCornerShape(10.dp)) {
                             Icon(Icons.Default.PlayArrow, null, Modifier.size(16.dp))
                             Spacer(Modifier.width(4.dp))
-                            Text(if (saved != null) "أكمل · ص${saved.page}" else "ابدأ القراءة", fontSize = 13.sp, fontFamily = Font)
+                            Text(if (saved != null) "أكمل الفصل ${d.chapters[saved.chapterIndex].number} · ص${saved.page}" else "ابدأ القراءة", fontSize = 13.sp, fontFamily = Font)
                         }
                         if (d.chapters.size > 1) {
                                 Button({ onChapter(d.chapters.first(), 0) }, Modifier.wrapContentWidth(),
@@ -1094,6 +1094,18 @@ private fun DetailScreen(
             val orderedChapters = if (newestFirst) d.chapters.asReversed() else d.chapters
             itemsIndexed(orderedChapters) { displayIndex, ch ->
                 val originalIndex = if (newestFirst) d.chapters.lastIndex - displayIndex else displayIndex
+                val progress = history.firstOrNull { it.manga.url == d.url && it.chapterIndex == originalIndex }
+                val progressLabel = when {
+                    progress?.completed == true -> "تمت المشاهدة"
+                    progress != null -> "أكمل من الصفحة ${progress.page}"
+                    ch.date.isNotEmpty() -> ch.date
+                    else -> "غير مشاهد"
+                }
+                val progressColor = when {
+                    progress?.completed == true -> Green
+                    progress != null -> accent
+                    else -> TextDim
+                }
                 Surface(
                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp)
                         .fillMaxWidth().clickable { onChapter(ch, originalIndex) },
@@ -1115,9 +1127,10 @@ private fun DetailScreen(
                         Column(Modifier.weight(1f)) {
                             Text(ch.title.ifEmpty { "الفصل ${ch.number}" }, color = TextPri, fontSize = 14.sp,
                                 maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            if (ch.date.isNotEmpty()) Text(ch.date, color = TextDim, fontSize = 11.sp)
+                            Text(progressLabel, color = progressColor, fontSize = 11.sp, fontWeight = if (progress != null) FontWeight.Medium else FontWeight.Normal)
                         }
-                        Icon(Icons.Default.PlayArrow, null, tint = accent, modifier = Modifier.size(18.dp))
+                        Icon(if (progress?.completed == true) Icons.Default.CheckCircle else Icons.Default.PlayArrow,
+                            null, tint = progressColor, modifier = Modifier.size(18.dp))
                     }
                 }
             }
