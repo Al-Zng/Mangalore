@@ -1,4 +1,5 @@
 package com.mangalore.app
+import android.content.Context
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -54,7 +55,18 @@ data class ChapterItem(
 object CookieStore {
     @Volatile var cfCookies: String = ""
     @Volatile var cfSolved:  Boolean = false
+    private const val PREFS = "mangalore_cf"
+    private const val COOKIE = "cookies"
     fun has() = cfCookies.isNotBlank()
+    fun restore(context: Context) {
+        val saved = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString(COOKIE, "").orEmpty()
+        if (saved.isNotBlank()) { cfCookies = saved; cfSolved = true }
+    }
+    fun persist(context: Context) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putString(COOKIE, cfCookies).apply()
+    }
 }
 
 // ─────────────────────────────────────────────────────────────
