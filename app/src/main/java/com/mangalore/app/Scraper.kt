@@ -110,8 +110,16 @@ object Scraper {
         }.build()
 
     private fun get(url: String): String? = try {
-        client().newCall(Request.Builder().url(url).build()).execute().body?.string()
-    } catch (_: Exception) { null }
+        client().newCall(Request.Builder().url(url).build()).execute().use { response ->
+            val body = response.body?.string().orEmpty()
+            Log.d("MangaloreHttp", "GET $url code=${response.code} bytes=${body.length}")
+            if (!response.isSuccessful) Log.e("MangaloreHttp", "HTTP ${response.code} for $url")
+            body
+        }
+    } catch (t: Throwable) {
+        Log.e("MangaloreHttp", "Request failed: $url", t)
+        null
+    }
 
     fun isCf(html: String) = html.contains("Just a moment") ||
             html.contains("cf-browser-verification") ||
@@ -231,8 +239,12 @@ object Scraper {
     suspend fun fetchChapterImages(url: String): Pair<List<String>, Boolean> =
         withContext(Dispatchers.IO) {
             if (!CookieStore.cfSolved) return@withContext Pair(emptyList(), true)
+            Log.d("MangaloreChapter", "Fetching chapter: $url")
             val html = get(url) ?: return@withContext Pair(emptyList(), true)
-            if (isCf(html))        return@withContext Pair(emptyList(), true)
+            if (isCf(html)) {
+                Log.w("MangaloreChapter", "Cloudflare/challenge response for: $url")
+                return@withContext Pair(emptyList(), true)
+            }
             val doc = Jsoup.parse(html)
             val imgs = doc.select("img.wp-manga-chapter-img, .reading-content img, .read-container img")
                 .mapNotNull { el ->
@@ -242,6 +254,8 @@ object Scraper {
                         .firstOrNull { it.startsWith("http") }
                 }
                 .distinct()
+            Log.d("MangaloreChapter", "Chapter images found=${imgs.size} url=$url")
+            if (imgs.isEmpty()) Log.e("MangaloreChapter", "No chapter images matched selectors for: $url")
             Pair(imgs, false)
         }
 
