@@ -4,6 +4,7 @@
     <application
         android:theme="@style/Theme.Mangalore"
         android:label="Mangalore"
+        android:icon="@drawable/app"
         android:allowBackup="true"
         android:supportsRtl="true"
         android:usesCleartextTraffic="false">

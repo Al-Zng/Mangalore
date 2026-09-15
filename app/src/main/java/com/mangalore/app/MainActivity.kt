@@ -39,6 +39,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.*
 import androidx.compose.ui.text.style.*
 import androidx.compose.ui.unit.*
@@ -717,10 +718,10 @@ private fun HomeScreen(accent: Color, onMenu: () -> Unit, onSearch: () -> Unit, 
             Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 8.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onMenu) { Icon(Icons.Default.Menu, null, tint = TextPri) }
-                Column(Modifier.weight(1f).padding(horizontal = 4.dp)) {
-                    Text("Mangalore", color = TextPri, fontSize = 22.sp,
-                        fontWeight = FontWeight.ExtraBold, letterSpacing = (-0.5).sp)
-                    Text("مانجا · مانهوا · كوميك", color = TextSec, fontSize = 10.sp)
+                Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                    Image(painterResource(R.drawable.logo), "Mangalore",
+                        modifier = Modifier.size(width = 112.dp, height = 52.dp),
+                        contentScale = ContentScale.Fit)
                 }
                 IconButton(onSearch) { Icon(Icons.Default.Search, null, tint = TextPri) }
             }
@@ -1520,11 +1521,9 @@ private fun SettingsScreen(accent:Color, amoled:Boolean, onAmoled:(Boolean)->Uni
         item {
             Box(Modifier.fillMaxWidth().padding(vertical = 36.dp), Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Box(Modifier.size(52.dp).clip(RoundedCornerShape(14.dp)).background(accent), Alignment.Center) {
-                        Text("M", color=Color.White, fontWeight=FontWeight.ExtraBold, fontSize=28.sp)
-                    }
+                    Image(painterResource(R.drawable.logo), "Mangalore",
+                        modifier = Modifier.size(84.dp), contentScale = ContentScale.Fit)
                     Spacer(Modifier.height(10.dp))
-                    Text("Mangalore", color=TextPri, fontSize=16.sp, fontWeight=FontWeight.Bold)
                     Text("v2.0.0", color=TextDim, fontSize=12.sp)
                 }
             }
@@ -1567,12 +1566,11 @@ private fun Drawer(accent:Color, cur:Dest, onClose:()->Unit, onNav:(String)->Uni
                 // Header
                 Box(Modifier.fillMaxWidth().height(150.dp)
                     .background(Brush.verticalGradient(listOf(accent.copy(.22f), Bg)))) {
-                    Column(Modifier.align(Alignment.BottomStart).padding(20.dp)) {
-                        Box(Modifier.size(50.dp).clip(RoundedCornerShape(14.dp)).background(accent), Alignment.Center) {
-                            Text("M", color=Color.White, fontSize=26.sp, fontWeight=FontWeight.ExtraBold)
-                        }
+                    Column(Modifier.align(Alignment.Center).padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Image(painterResource(R.drawable.logo), "Mangalore",
+                            modifier = Modifier.size(width = 126.dp, height = 82.dp),
+                            contentScale = ContentScale.Fit)
                         Spacer(Modifier.height(8.dp))
-                        Text("Mangalore", color=TextPri, fontSize=16.sp, fontWeight=FontWeight.Bold)
                     }
                 }
                 LazyColumn(Modifier.weight(1f).padding(horizontal=8.dp, vertical=8.dp)) {
