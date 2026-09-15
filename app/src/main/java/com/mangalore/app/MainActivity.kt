@@ -1179,7 +1179,11 @@ private fun ReaderScreen(
     Box(Modifier.fillMaxSize().background(Black)) {
         when (state) {
             0 -> Box(Modifier.fillMaxSize(), Alignment.Center) { Column(horizontalAlignment = Alignment.CenterHorizontally) { CircularProgressIndicator(color = accent); Spacer(Modifier.height(14.dp)); Text("جاري تحميل الفصل...", color = TextSec) } }
-            2 -> Box(Modifier.fillMaxSize(), Alignment.Center) { Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) { Icon(Icons.Default.Security, null, tint = accent, modifier = Modifier.size(56.dp)); Spacer(Modifier.height(16.dp)); Text("مطلوب تحقق الأمان", color = TextPri, fontSize = 17.sp, fontWeight = FontWeight.Bold); Spacer(Modifier.height(8.dp)); Text("حل تحدي الأمان للوصول إلى الفصل", color = TextSec, textAlign = TextAlign.Center); Spacer(Modifier.height(24.dp)); Button(onCfNeeded, Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = accent)) { Text("حل التحقق", color = Color.White, fontFamily = Font) }; Spacer(Modifier.height(10.dp)); OutlinedButton(onBack, Modifier.fillMaxWidth()) { Text("رجوع", color = TextSec, fontFamily = Font) } } }
+            // Keep the reader surface quiet while the hidden Cloudflare probe runs.
+            // If a manual challenge is actually required, CfProbe opens CfDialog automatically.
+            2 -> Box(Modifier.fillMaxSize(), Alignment.Center) {
+                CircularProgressIndicator(color = accent, modifier = Modifier.size(58.dp), strokeWidth = 5.dp)
+            }
             3 -> Box(Modifier.fillMaxSize(), Alignment.Center) { Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) { Icon(Icons.Default.CloudOff, null, tint = Red, modifier = Modifier.size(52.dp)); Text("تعذّر تحميل الفصل", color = TextSec); Button(::retry, colors = ButtonDefaults.buttonColors(containerColor = accent)) { Text("إعادة المحاولة", color = Color.White) } } }
             else -> LazyColumn(modifier = Modifier.fillMaxSize().clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { bars = !bars }, state = listState) {
                 blocks.forEachIndexed { position, (index, images) ->
