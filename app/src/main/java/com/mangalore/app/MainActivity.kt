@@ -155,20 +155,8 @@ private fun App() {
             Box(Modifier.fillMaxSize().background(appBg)) {
 
                 // ── Screens ───────────────────────────────────
-                AnimatedContent(
-                    modifier = Modifier.fillMaxSize(),
-                    targetState = cur,
-                    transitionSpec = {
-                        val fwd = stack.size > 1
-                        (fadeIn(tween(220)) + slideInHorizontally(
-                            spring(Spring.DampingRatioLowBouncy, Spring.StiffnessMediumLow)
-                        ) { if (fwd) it / 10 else -it / 10 }) togetherWith
-                        (fadeOut(tween(150)) + slideOutHorizontally(
-                            spring(Spring.DampingRatioNoBouncy, Spring.StiffnessMedium)
-                        ) { if (fwd) -it / 10 else it / 10 })
-                    },
-                    label = "screen"
-                ) { d ->
+                Box(Modifier.fillMaxSize()) {
+                    val d = cur
                     when (d) {
                         is Dest.Home -> HomeScreen(accent, { drawer = true }, { push(Dest.Search) }) { push(Dest.Detail(it)) }
                         is Dest.Search -> SearchScreen(accent, ::pop) { push(Dest.Detail(it)) }
@@ -195,6 +183,7 @@ private fun App() {
                     }
                 }
 
+                }
                 if (cur is Dest.Reader && !CookieStore.cfSolved && !showCf) {
                     CfProbe(
                         onChallenge = { showCf = true },
@@ -214,13 +203,7 @@ private fun App() {
                             .pointerInput(Unit) { detectTapGestures { drawer = false } }
                     )
                 }
-                AnimatedVisibility(drawer,
-                    enter = fadeIn(tween(180)) + slideInHorizontally(
-                        spring(Spring.DampingRatioNoBouncy, Spring.StiffnessMediumLow)) { it },
-                    exit  = fadeOut(tween(140)) + slideOutHorizontally(
-                        spring(Spring.DampingRatioNoBouncy, Spring.StiffnessMedium)) { it },
-                    label = "drawer"
-                ) {
+                if (drawer) {
                     Drawer(accent, cur, { drawer = false }) { dest ->
                         when (dest) {
                             "home"     -> home()
@@ -297,7 +280,7 @@ private fun CfDialog(onSolved: (String) -> Unit, onSkip: () -> Unit) {
                             TextButton(onSkip) { Text("تخطي", color = TextSec, fontFamily = Font, fontSize = 13.sp) }
                         }
 
-                        AnimatedVisibility(loading) {
+                        if (loading) {
                             Row(Modifier.fillMaxWidth().background(Accent.copy(.08f))
                                 .padding(horizontal = 16.dp, vertical = 9.dp),
                                 verticalAlignment = Alignment.CenterVertically,
@@ -430,13 +413,13 @@ private fun HomeScreen(accent: Color, onMenu: () -> Unit, onSearch: () -> Unit, 
             item {
                 // Hero shimmer
                 Box(Modifier.fillMaxWidth().height(252.dp).padding(horizontal = 14.dp, vertical = 6.dp)
-                    .clip(RoundedCornerShape(20.dp)).background(shimmer()))
+                    .clip(RoundedCornerShape(20.dp)).background(staticPlaceholder()))
                 Spacer(Modifier.height(14.dp).fillMaxWidth())
                 // Tab shimmer
                 Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Box(Modifier.weight(1f).height(36.dp).clip(RoundedCornerShape(20.dp)).background(shimmer()))
-                    Box(Modifier.weight(1f).height(36.dp).clip(RoundedCornerShape(20.dp)).background(shimmer()))
+                    Box(Modifier.weight(1f).height(36.dp).clip(RoundedCornerShape(20.dp)).background(staticPlaceholder()))
+                    Box(Modifier.weight(1f).height(36.dp).clip(RoundedCornerShape(20.dp)).background(staticPlaceholder()))
                 }
                 Spacer(Modifier.height(14.dp).fillMaxWidth())
                 // Grid shimmer
@@ -446,11 +429,11 @@ private fun HomeScreen(accent: Color, onMenu: () -> Unit, onSearch: () -> Unit, 
                     verticalArrangement   = Arrangement.spacedBy(14.dp)) {
                     items(12) {
                         Column {
-                            Box(Modifier.fillMaxWidth().aspectRatio(CoverAspect).clip(RoundedCornerShape(12.dp)).background(shimmer()))
+                            Box(Modifier.fillMaxWidth().aspectRatio(CoverAspect).clip(RoundedCornerShape(12.dp)).background(staticPlaceholder()))
                             Spacer(Modifier.height(6.dp))
-                            Box(Modifier.fillMaxWidth(.8f).height(12.dp).clip(RoundedCornerShape(4.dp)).background(shimmer()))
+                            Box(Modifier.fillMaxWidth(.8f).height(12.dp).clip(RoundedCornerShape(4.dp)).background(staticPlaceholder()))
                             Spacer(Modifier.height(4.dp))
-                            Box(Modifier.fillMaxWidth(.5f).height(10.dp).clip(RoundedCornerShape(4.dp)).background(shimmer()))
+                            Box(Modifier.fillMaxWidth(.5f).height(10.dp).clip(RoundedCornerShape(4.dp)).background(staticPlaceholder()))
                         }
                     }
                 }
@@ -598,12 +581,11 @@ private fun HomeScreen(accent: Color, onMenu: () -> Unit, onSearch: () -> Unit, 
                 horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf("آخر التحديثات", "الأكثر شعبية").forEachIndexed { i, lbl ->
                     val sel = tab == i
-                    val a by animateFloatAsState(if (sel) 1f else .5f, label = "ta")
                     Surface(
                         color  = if (sel) accent else Surface3,
                         shape  = RoundedCornerShape(20.dp),
                         border = if (!sel) BorderStroke(.5.dp, Border) else null,
-                        modifier = Modifier.weight(1f).graphicsLayer { alpha = a }.clickable { tab = i }
+                        modifier = Modifier.weight(1f).clickable { tab = i }
                     ) {
                         Text(lbl, color = if (sel) Color.White else TextSec,
                             fontSize = 13.sp, fontWeight = if (sel) FontWeight.SemiBold else FontWeight.Normal,
@@ -789,9 +771,9 @@ private fun SearchScreen(accent: Color, onBack: () -> Unit, onPick: (MangaItem) 
                 verticalArrangement   = Arrangement.spacedBy(14.dp)) {
                 items(12) {
                     Column {
-                        Box(Modifier.fillMaxWidth().aspectRatio(CoverAspect).clip(RoundedCornerShape(12.dp)).background(shimmer()))
+                        Box(Modifier.fillMaxWidth().aspectRatio(CoverAspect).clip(RoundedCornerShape(12.dp)).background(staticPlaceholder()))
                         Spacer(Modifier.height(6.dp))
-                        Box(Modifier.fillMaxWidth(.8f).height(11.dp).clip(RoundedCornerShape(4.dp)).background(shimmer()))
+                        Box(Modifier.fillMaxWidth(.8f).height(11.dp).clip(RoundedCornerShape(4.dp)).background(staticPlaceholder()))
                     }
                 }
             }
@@ -850,7 +832,7 @@ private fun MangaListScreen(title: String, accent: Color, onBack: () -> Unit, lo
         TopBar(title, accent, onBack)
         if (loading) {
             LazyVerticalGrid(GridCells.Fixed(3), contentPadding = PaddingValues(14.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                items(9) { Box(Modifier.fillMaxWidth().aspectRatio(CoverAspect).clip(RoundedCornerShape(12.dp)).background(shimmer())) }
+                items(9) { Box(Modifier.fillMaxWidth().aspectRatio(CoverAspect).clip(RoundedCornerShape(12.dp)).background(staticPlaceholder())) }
             }
         } else if (items.isEmpty()) {
             EmptyState(Icons.Default.WifiOff, "لا توجد أعمال", "تعذّر تحميل القائمة")
@@ -886,12 +868,12 @@ private fun DetailLoadingScreen(
         if (!err) {
             // Shimmer placeholder that mimics detail layout
             Column(Modifier.fillMaxSize()) {
-                Box(Modifier.fillMaxWidth().height(280.dp).background(shimmer()))
+                Box(Modifier.fillMaxWidth().height(280.dp).background(staticPlaceholder()))
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Box(Modifier.fillMaxWidth(.7f).height(22.dp).clip(RoundedCornerShape(6.dp)).background(shimmer()))
-                    Box(Modifier.fillMaxWidth(.5f).height(14.dp).clip(RoundedCornerShape(4.dp)).background(shimmer()))
+                    Box(Modifier.fillMaxWidth(.7f).height(22.dp).clip(RoundedCornerShape(6.dp)).background(staticPlaceholder()))
+                    Box(Modifier.fillMaxWidth(.5f).height(14.dp).clip(RoundedCornerShape(4.dp)).background(staticPlaceholder()))
                     Spacer(Modifier.height(6.dp))
-                    repeat(5) { Box(Modifier.fillMaxWidth().height(13.dp).clip(RoundedCornerShape(4.dp)).background(shimmer())) }
+                    repeat(5) { Box(Modifier.fillMaxWidth().height(13.dp).clip(RoundedCornerShape(4.dp)).background(staticPlaceholder())) }
                 }
             }
         } else {
@@ -1032,7 +1014,7 @@ private fun DetailScreen(
                         Text(lbl, color = if (active) accent else TextSec, fontSize = 14.sp,
                             fontWeight = if (active) FontWeight.Bold else FontWeight.Normal)
                         Spacer(Modifier.height(6.dp))
-                        val w by animateFloatAsState(if (active) .5f else 0f, label = "tl")
+                        val w = if (active) .5f else 0f
                         Box(Modifier.fillMaxWidth(w).height(2.dp).background(accent, RoundedCornerShape(1.dp)))
                     }
                 }
@@ -1182,17 +1164,17 @@ private fun ReaderScreen(
                 blocks.forEachIndexed { position, (index, images) ->
                     item(key = "chapter-header-$index") { Box(Modifier.fillMaxWidth().background(Brush.horizontalGradient(listOf(accent.copy(.22f), accent.copy(.06f), Color.Transparent))).padding(horizontal = 16.dp, vertical = 14.dp)) { Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) { Box(Modifier.width(CoverWidthCh).height(CoverHeightCh).clip(RoundedCornerShape(8.dp))) { Img(manga.coverUrl, Modifier.fillMaxSize()); Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(.82f)))).padding(bottom = 3.dp, top = 8.dp), Alignment.Center) { Text(manga.chapters[index].number, color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold) } }; Column { Text("الفصل ${manga.chapters[index].number}", color = accent, fontSize = 15.sp, fontWeight = FontWeight.Bold); if (displayedChapterTitle.isNotEmpty()) Text(displayedChapterTitle, color = TextSec, fontSize = 12.sp) } } } }
                     itemsIndexed(images, key = { i, url -> "$index-$i-$url" }) { _, url ->
-                        SubcomposeAsyncImage(model = ImageRequest.Builder(LocalContext.current).data(url).addHeader("Referer", "https://mangalik.net/").addHeader("User-Agent", "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/124.0.0.0").apply { if (CookieStore.has()) addHeader("Cookie", CookieStore.cfCookies) }.crossfade(true).build(), contentDescription = null, contentScale = ContentScale.FillWidth, modifier = Modifier.fillMaxWidth(), loading = { Box(Modifier.fillMaxWidth().height(270.dp), Alignment.Center) { CircularProgressIndicator(color = accent.copy(.5f), modifier = Modifier.size(30.dp), strokeWidth = 2.dp) } }, error = { failedImageUrls = failedImageUrls + url; Box(Modifier.fillMaxWidth().height(90.dp).background(Surface2), Alignment.Center) { Icon(Icons.Default.BrokenImage, null, tint = TextDim, modifier = Modifier.size(30.dp)) } })
+                        SubcomposeAsyncImage(model = ImageRequest.Builder(LocalContext.current).data(url).addHeader("Referer", "https://mangalik.net/").addHeader("User-Agent", "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/124.0.0.0").apply { if (CookieStore.has()) addHeader("Cookie", CookieStore.cfCookies) }.crossfade(false).build(), contentDescription = null, contentScale = ContentScale.FillWidth, modifier = Modifier.fillMaxWidth(), loading = { Box(Modifier.fillMaxWidth().height(270.dp), Alignment.Center) { CircularProgressIndicator(color = accent.copy(.5f), modifier = Modifier.size(30.dp), strokeWidth = 2.dp) } }, error = { failedImageUrls = failedImageUrls + url; Box(Modifier.fillMaxWidth().height(90.dp).background(Surface2), Alignment.Center) { Icon(Icons.Default.BrokenImage, null, tint = TextDim, modifier = Modifier.size(30.dp)) } })
                     }
                     if (position == blocks.lastIndex) item(key = "chapter-loader-$index") { LaunchedEffect(index, blocks.size) { loadChapter(index - 1) }; if (index > 0) LinearProgressIndicator(Modifier.fillMaxWidth().padding(18.dp), color = accent) else Text("انتهت الفصول", color = TextDim, modifier = Modifier.fillMaxWidth().padding(24.dp), textAlign = TextAlign.Center) }
                 }
                 item { Spacer(Modifier.height(80.dp)) }
             }
         }
-        AnimatedVisibility(bars && state == 1, enter = fadeIn(tween(180)) + slideInVertically { -it }, exit = fadeOut(tween(140)) + slideOutVertically { -it }, label = "reader-top", modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth()) {
+        if (bars && state == 1) {
             Surface(color = Color.Black.copy(.92f)) { Column { Row(Modifier.statusBarsPadding().padding(horizontal = 4.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) { IconButton(onBack) { Icon(Icons.Default.ArrowForward, null, tint = Color.White) }; Column(Modifier.weight(1f).padding(horizontal = 4.dp)) { Text(manga.title, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis); Text(if (displayedChapterNum.isNotEmpty()) "الفصل $displayedChapterNum${if (displayedChapterTitle.isNotEmpty()) " • $displayedChapterTitle" else ""}" else chTitle, color = Color.White.copy(.7f), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }; if (totalPages > 0) Text("$currentPage / $totalPages", color = Color.White, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 10.dp)); IconButton(onClick = { showChapterList = true }) { Icon(Icons.Default.List, "قائمة الفصول", tint = Color.White) } } } }
         }
-        AnimatedVisibility(bars && state == 1, enter = fadeIn(), exit = fadeOut(), label = "reader-bottom", modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()) { Surface(color = Color.Black.copy(.92f)) { Row(Modifier.navigationBarsPadding().padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) { Text("تمرير تلقائي", color = Color.White, fontSize = 12.sp, modifier = Modifier.weight(1f)); IconButton(onClick = { autoScrollEnabled = !autoScrollEnabled }) { Icon(if (autoScrollEnabled) Icons.Default.Pause else Icons.Default.PlayArrow, null, tint = accent) }; IconButton(onClick = { showSpeedPicker = !showSpeedPicker }) { Icon(Icons.Default.Timer, null, tint = Color.White) }; if (failedImageUrls.isNotEmpty()) IconButton(onClick = { retry() }) { Icon(Icons.Default.Sync, "إعادة الجلب", tint = Red) } } } }
+        if (bars && state == 1) { Surface(color = Color.Black.copy(.92f)) { Row(Modifier.navigationBarsPadding().padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) { Text("تمرير تلقائي", color = Color.White, fontSize = 12.sp, modifier = Modifier.weight(1f)); IconButton(onClick = { autoScrollEnabled = !autoScrollEnabled }) { Icon(if (autoScrollEnabled) Icons.Default.Pause else Icons.Default.PlayArrow, null, tint = accent) }; IconButton(onClick = { showSpeedPicker = !showSpeedPicker }) { Icon(Icons.Default.Timer, null, tint = Color.White) }; if (failedImageUrls.isNotEmpty()) IconButton(onClick = { retry() }) { Icon(Icons.Default.Sync, "إعادة الجلب", tint = Red) } } } }
         if (showSpeedPicker) Surface(Modifier.align(Alignment.BottomCenter).padding(bottom = 62.dp), color = Surface3, shape = RoundedCornerShape(12.dp)) { Row(Modifier.padding(8.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) { (1..5).forEach { speed -> FilterChip(autoScrollSpeed == speed, { autoScrollSpeed = speed; showSpeedPicker = false }, label = { Text("$speed") }) } } }
         if (showChapterList) {
             var newestFirst by remember { mutableStateOf(true) }
@@ -1481,18 +1463,14 @@ private fun Img(url:String, modifier:Modifier=Modifier, scale:ContentScale=Conte
         model = ImageRequest.Builder(LocalContext.current).data(url)
             .addHeader("Referer","https://mangalik.net/")
             .addHeader("User-Agent","Mozilla/5.0 (Linux; Android 14) Chrome/124.0.0.0")
-            .crossfade(300).build(),
+            .crossfade(0).build(),
         contentDescription = null, contentScale = scale, modifier = modifier
     )
 }
 
 @Composable
 private fun SpringCard(onClick:()->Unit, content:@Composable ()->Unit) {
-    val src = remember { MutableInteractionSource() }
-    val pressed by src.collectIsPressedAsState()
-    val scale by animateFloatAsState(if(pressed) 0.956f else 1f,
-        spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessMediumLow), label="sc")
-    Box(Modifier.graphicsLayer{scaleX=scale;scaleY=scale}.clickable(src,null,onClick=onClick)) { content() }
+    Box(Modifier.clickable(onClick = onClick)) { content() }
 }
 
 @Composable private fun GChip(label:String, accent:Color) {
@@ -1596,7 +1574,7 @@ private fun SpringCard(onClick:()->Unit, content:@Composable ()->Unit) {
 }
 
 @Composable private fun DItem(label:String, icon:ImageVector, dest:String, sel:Boolean, onNav:(String)->Unit) {
-    val bg by animateColorAsState(if(sel) Accent.copy(.13f) else Color.Transparent, label="di")
+    val bg = if(sel) Accent.copy(.13f) else Color.Transparent
     Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(bg).clickable{onNav(dest)}
         .padding(horizontal=12.dp, vertical=12.dp), verticalAlignment=Alignment.CenterVertically) {
         Icon(icon, null, tint=if(sel) Accent else TextPri, modifier=Modifier.size(20.dp))
@@ -1609,10 +1587,5 @@ private fun SpringCard(onClick:()->Unit, content:@Composable ()->Unit) {
 // ══════════════════════════════════════════════════════════════
 // SHIMMER
 // ══════════════════════════════════════════════════════════════
-@Composable private fun shimmer(): Brush {
-    val t = rememberInfiniteTransition(label="sh")
-    val x by t.animateFloat(-1f, 1.6f, infiniteRepeatable(tween(1100, easing=LinearEasing)), label="sx")
-    return Brush.linearGradient(
-        listOf(Surface3.copy(.4f), Color(0xFF252530), Surface3.copy(.85f), Color(0xFF252530), Surface3.copy(.4f)),
-        Offset(x*1100f, 0f), Offset((x+.55f)*1300f, 220f))
-}
+@Composable private fun staticPlaceholder(): Brush =
+    Brush.linearGradient(listOf(Surface2, Surface2))
