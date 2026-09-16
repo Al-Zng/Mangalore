@@ -152,6 +152,7 @@ private sealed class Dest {
     object Search : Dest()
     object AllManga : Dest()
     object LatestManga : Dest()
+    object PopularManga : Dest()
     object Library : Dest()
     object History : Dest()
     object Downloads : Dest()
@@ -512,6 +513,7 @@ private fun App(oauthTick: Int = 0) {
                         is Dest.Search -> SearchScreen(accent, ::pop) { push(Dest.Detail(it)) }
                         is Dest.AllManga -> MangaListScreen("كل المانجا", accent, ::pop, { Scraper.fetchAll(it) }) { push(Dest.Detail(it)) }
                         is Dest.LatestManga -> MangaListScreen("أحدث المانجا", accent, ::pop, { Scraper.fetchLatest(it) }) { push(Dest.Detail(it)) }
+                        is Dest.PopularManga -> MangaListScreen("أشهر المانجا", accent, ::pop, { Scraper.fetchPopular(it) }) { push(Dest.Detail(it)) }
                         is Dest.Library -> LibraryScreen(accent, lib, ::pop, { push(Dest.Detail(it)) }) {
                             lib.remove(it)
                             appScope.launch { runCatching { CloudStore.removeLibrary(it.url) } }
@@ -582,6 +584,7 @@ private fun App(oauthTick: Int = 0) {
                             "search"   -> push(Dest.Search)
                             "all"      -> push(Dest.AllManga)
                             "latest"   -> push(Dest.LatestManga)
+                            "popular"  -> push(Dest.PopularManga)
                             "library"  -> { if (cur !is Dest.Library)  push(Dest.Library) else drawer = false }
                             "history"  -> { if (cur !is Dest.History)  push(Dest.History) else drawer = false }
                             "downloads" -> { if (cur !is Dest.Downloads) push(Dest.Downloads) else drawer = false }
@@ -2574,6 +2577,7 @@ private fun Drawer(accent:Color, cur:Dest, onClose:()->Unit, onNav:(String)->Uni
                     item { DItem("الرئيسية",    Icons.Default.Home,          "home",     cur is Dest.Home,     onNav) }
                     item { DItem("كل المانجا",    Icons.Default.GridView,       "all",      cur is Dest.AllManga, onNav) }
                     item { DItem("أحدث المانجا",  Icons.Default.NewReleases,    "latest",   cur is Dest.LatestManga, onNav) }
+                    item { DItem("أشهر المانجا",  Icons.Default.TrendingUp,     "popular",  cur is Dest.PopularManga, onNav) }
                     item { DItem("البحث",        Icons.Default.Search,        "search",   cur is Dest.Search,   onNav) }
                     item { DItem("مكتبتي",       Icons.Default.LibraryBooks,  "library",  cur is Dest.Library,  onNav) }
                     item { DItem("سجل القراءة",  Icons.Default.History,       "history",  cur is Dest.History,  onNav) }
