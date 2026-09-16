@@ -58,7 +58,7 @@ object CloudStore {
             val o = arr.optJSONObject(i) ?: return@mapNotNull null
             val item = MangaItem(o.optString("manga_slug"), o.optString("manga_title"), o.optString("manga_slug"), o.optString("cover_url"), o.optString("cover_url"), o.optString("manga_url"))
             val chapter = ChapterItem(o.optString("chapter_number"), "", o.optString("chapter_url"), "")
-            val manga = MangaDetail(item.title, item.slug, item.coverUrl, item.coverFull, item.url, emptyList(), "", "", "", "", "", "", listOf(chapter))
+            val manga = MangaDetail(item.title, item.slug, item.coverUrl, item.coverFull, item.url, emptyList(), "", "", "", "", "", "", "", listOf(chapter))
             ReadingProgress(item, manga, 0, o.optInt("page", 1), o.optInt("total_pages", 0), o.optBoolean("completed"))
         }
     }
