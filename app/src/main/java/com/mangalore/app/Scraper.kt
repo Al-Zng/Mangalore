@@ -69,7 +69,7 @@ object Scraper {
 
     private data class AniMetadata(
         val author: String = "", val artist: String = "", val status: String = "",
-        val year: String = "", val description: String = "", val genres: List<String> = emptyList()
+        val year: String = "", val format: String = "", val description: String = "", val genres: List<String> = emptyList()
     )
 
     private fun cleanMeta(v: String): String {
@@ -86,6 +86,21 @@ object Scraper {
                 v.contains("مستمر") -> "مستمرة"
             else -> value.trim()
         }
+    }
+
+    private fun translateGenre(value: String): String = mapOf(
+        "Action" to "أكشن", "Adventure" to "مغامرة", "Comedy" to "كوميديا", "Drama" to "دراما",
+        "Fantasy" to "فانتازيا", "Romance" to "رومانسية", "Mystery" to "غموض", "Horror" to "رعب",
+        "Sports" to "رياضة", "Sci-Fi" to "خيال علمي", "Supernatural" to "خوارق الطبيعة",
+        "Psychological" to "نفسي", "Historical" to "تاريخي", "School" to "مدرسي",
+        "Slice of Life" to "حياة يومية", "Mecha" to "ميكا", "Martial Arts" to "فنون قتالية",
+        "Isekai" to "إيسيكاي", "Military" to "عسكري", "Music" to "موسيقى", "Ecchi" to "إيتشي",
+        "Harem" to "حريم", "Thriller" to "إثارة", "Tragedy" to "مأساة", "Crime" to "جريمة"
+    )[value] ?: value
+
+    private fun translateFormat(value: String): String = when (value.uppercase()) {
+        "MANGA" -> "مانجا"; "MANHWA" -> "مانهوا"; "MANHUA" -> "مانها"
+        "ONE_SHOT" -> "فصل واحد"; "NOVEL" -> "رواية"; else -> ""
     }
 
     private fun trustedStatusOverride(url: String, title: String): String? {
@@ -163,7 +178,7 @@ object Scraper {
     private fun fetchAniList(title: String): AniMetadata? = runCatching {
         val query = """
             query(${"$"}search: String) { Page(perPage: 1) { media(search: ${"$"}search, type: MANGA) {
-              description(asHtml: false) status startDate { year } genres
+              format description(asHtml: false) status startDate { year } genres
               staff(perPage: 15) { edges { role node { name { full } } } }
             } } }
         """.trimIndent()
@@ -189,7 +204,8 @@ object Scraper {
                 AniMetadata(author, artist, when (media.optString("status")) {
                     "FINISHED" -> "مكتملة"; "RELEASING" -> "مستمرة"; "HIATUS" -> "متوقفة مؤقتاً"; "CANCELLED" -> "ملغاة"; else -> ""
                 }, media.optJSONObject("startDate")?.optInt("year", 0)?.takeIf { it > 0 }?.toString().orEmpty(),
-                    media.optString("description").trim(), media.optJSONArray("genres")?.let { a -> (0 until a.length()).map { a.optString(it) } } ?: emptyList())
+                    translateFormat(media.optString("format")), media.optString("description").trim(),
+                    media.optJSONArray("genres")?.let { a -> (0 until a.length()).map { translateGenre(a.optString(it)) } } ?: emptyList())
             }
     }.getOrNull()
 
@@ -282,14 +298,14 @@ object Scraper {
         val artist = ani?.artist.orEmpty().ifEmpty { cleanMeta(metaVal("الرسام", "Artist", "Çizer")) }
         val year   = ani?.year.orEmpty().ifEmpty { cleanMeta(metaVal("سنة", "Released", "Year")).ifEmpty { publishedYear } }
         val siteOrigin = cleanMeta(metaVal("النوع", "Type", "Tür")).ifEmpty { genres.joinToString(" , ") }
-        val origin = ani?.genres?.takeIf { it.isNotEmpty() }?.joinToString(" , ") ?: siteOrigin
+        val origin = ani?.format.orEmpty().ifEmpty { siteOrigin }
 
         // Description - clean of links/tags
         val siteDesc = doc.selectFirst(".description-summary .summary__content, .description-summary p, .manga-excerpt p")
             ?.text()?.trim().orEmpty().ifEmpty {
                 doc.selectFirst("meta[property=og:description]")?.attr("content")?.trim().orEmpty()
             }
-        val desc = ani?.description.orEmpty().ifEmpty { siteDesc }
+        val desc = siteDesc
 
         // Rating
         val rating = doc.selectFirst(".score.font-meta, .post-rating .score")?.text()?.trim() ?: ""

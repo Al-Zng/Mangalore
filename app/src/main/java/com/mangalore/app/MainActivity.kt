@@ -1545,7 +1545,7 @@ private fun DetailScreen(
                         val na = "غير متوفر"
                         IRow("المؤلف", d.author.ifEmpty { na }, dimValue = d.author.isEmpty())
                         IRow("الرسام", d.artist.ifEmpty { na }, dimValue = d.artist.isEmpty())
-                        IRow("النوع", d.origin.ifEmpty { na }, dimValue = d.origin.isEmpty())
+                        IRow("نوع العمل", d.origin.ifEmpty { na }, dimValue = d.origin.isEmpty())
                         IRow("السنة", d.releaseYear.ifEmpty { na }, dimValue = d.releaseYear.isEmpty())
                         IRow("الحالة", d.status.ifEmpty { na }, last = true, dimValue = d.status.isEmpty())
                     }
