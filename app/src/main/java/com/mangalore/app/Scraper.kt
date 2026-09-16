@@ -281,7 +281,8 @@ object Scraper {
         val author = ani?.author.orEmpty().ifEmpty { siteAuthor }
         val artist = ani?.artist.orEmpty().ifEmpty { cleanMeta(metaVal("الرسام", "Artist", "Çizer")) }
         val year   = ani?.year.orEmpty().ifEmpty { cleanMeta(metaVal("سنة", "Released", "Year")).ifEmpty { publishedYear } }
-        val origin = ani?.genres.orEmpty().ifEmpty { cleanMeta(metaVal("النوع", "Type", "Tür")).ifEmpty { genres } }.joinToString(" , ")
+        val siteOrigin = cleanMeta(metaVal("النوع", "Type", "Tür")).ifEmpty { genres.joinToString(" , ") }
+        val origin = ani?.genres?.takeIf { it.isNotEmpty() }?.joinToString(" , ") ?: siteOrigin
 
         // Description - clean of links/tags
         val siteDesc = doc.selectFirst(".description-summary .summary__content, .description-summary p, .manga-excerpt p")
