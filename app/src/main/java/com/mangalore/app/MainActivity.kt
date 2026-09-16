@@ -374,9 +374,7 @@ private fun AuthScreen(onSignedIn: () -> Unit, onGoogle: () -> Unit) {
                         border = BorderStroke(1.dp, Border),
                         colors = ButtonDefaults.outlinedButtonColors(containerColor = Surface3)
                     ) {
-                        Box(Modifier.size(24.dp).clip(CircleShape).background(Color(0xFF4285F4)), Alignment.Center) {
-                            Text("G", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                        }
+                        Image(painterResource(R.drawable.google_g), "Google", Modifier.size(24.dp))
                         Spacer(Modifier.width(10.dp))
                         Text("المتابعة مع Google", color = TextPri, fontWeight = FontWeight.Medium, fontSize = 14.sp, fontFamily = Font)
                     }
@@ -525,7 +523,9 @@ private fun App(oauthTick: Int = 0) {
                             accent, amoled,
                             { amoled = it; settingsPrefs.edit().putBoolean("amoled", it).apply() },
                             { accent = it; settingsPrefs.edit().putInt("accent", it.toArgb()).apply() },
-                            ::pop
+                            ::pop,
+                            { AuthStore.signOut(context); signedIn = false },
+                            { signedIn = false }
                         )
                         is Dest.Detail -> DetailLoadingScreen(d.item, accent, lib, ::pop) { replaceTop(Dest.DetailFull(it)) }
                         is Dest.DetailFull -> DetailScreen(
@@ -770,10 +770,7 @@ private fun GoogleAuthDialog(onSigned: (Uri) -> Unit, onDismiss: () -> Unit) {
                     Row(Modifier.fillMaxWidth().statusBarsPadding()
                         .padding(horizontal = 12.dp, vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.size(38.dp).clip(CircleShape).background(Color(0xFF4285F4).copy(.15f)),
-                            Alignment.Center) {
-                            Text("G", color = Color(0xFF4285F4), fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                        }
+                        Image(painterResource(R.drawable.google_g), "Google", Modifier.size(26.dp))
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
                             Text("تسجيل الدخول بـ Google", color = TextPri, fontSize = 16.sp, fontWeight = FontWeight.Bold)
@@ -2391,8 +2388,17 @@ private fun ProfileStat(label: String, value: String, modifier: Modifier) {
 // SETTINGS
 // ══════════════════════════════════════════════════════════════
 @Composable
-private fun SettingsScreen(accent:Color, amoled:Boolean, onAmoled:(Boolean)->Unit, onAccent:(Color)->Unit, onBack:()->Unit) {
+private fun SettingsScreen(accent:Color, amoled:Boolean, onAmoled:(Boolean)->Unit, onAccent:(Color)->Unit, onBack:()->Unit, onSignedOut:()->Unit, onDeleted:()->Unit) {
     var picker   by remember { mutableStateOf(false) }
+    var confirmLogout by remember { mutableStateOf(false) }
+    var deleteDialog by remember { mutableStateOf(false) }
+    var finalDeleteDialog by remember { mutableStateOf(false) }
+    var deleteName by remember { mutableStateOf("") }
+    var deleteChecked by remember { mutableStateOf(false) }
+    var deleting by remember { mutableStateOf(false) }
+    var deleteError by remember { mutableStateOf("") }
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var vScroll  by remember { mutableStateOf(true) }
     var tapNav   by remember { mutableStateOf(true) }
     var fullscr  by remember { mutableStateOf(true) }
@@ -2433,6 +2439,17 @@ private fun SettingsScreen(accent:Color, amoled:Boolean, onAmoled:(Boolean)->Uni
             }
         }
 
+        item { SecLabel("الحساب", accent) }
+        item {
+            SCard {
+                SAction("تسجيل الخروج", "الخروج من الحساب على هذا الجهاز", Icons.Default.Logout, accent) { confirmLogout = true }
+                D2()
+                SAction("حذف الحساب", "حذف الحساب وبياناته نهائياً", Icons.Default.DeleteForever, Red) {
+                    deleteName = ""; deleteChecked = false; deleteError = ""; deleteDialog = true
+                }
+            }
+        }
+
         item {
             Box(Modifier.fillMaxWidth().padding(vertical = 36.dp), Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -2446,6 +2463,56 @@ private fun SettingsScreen(accent:Color, amoled:Boolean, onAmoled:(Boolean)->Uni
             }
         }
     }
+
+    if (confirmLogout) AlertDialog(
+        onDismissRequest = { confirmLogout = false }, containerColor = Surface2,
+        title = { Text("تسجيل الخروج", color = TextPri, fontFamily = Font, fontWeight = FontWeight.Bold) },
+        text = { Text("هل تريد تسجيل الخروج من هذا الجهاز؟", color = TextSec, fontFamily = Font) },
+        confirmButton = { Button({ confirmLogout = false; AuthStore.signOut(context); onSignedOut() }, shape = ButtonShape) { Text("تسجيل الخروج", fontFamily = Font) } },
+        dismissButton = { TextButton({ confirmLogout = false }) { Text("إلغاء", color = TextSec, fontFamily = Font) } }
+    )
+
+    if (deleteDialog) AlertDialog(
+        onDismissRequest = { if (!deleting) deleteDialog = false }, containerColor = Surface2,
+        title = { Text("حذف الحساب", color = Red, fontFamily = Font, fontWeight = FontWeight.Bold) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("هذا الإجراء نهائي. اكتب اسمك كما يظهر في الملف الشخصي:", color = TextSec, fontFamily = Font)
+                OutlinedTextField(deleteName, { deleteName = it }, label = { Text("اسم الحساب") }, singleLine = true, shape = InputShape, modifier = Modifier.fillMaxWidth())
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(deleteChecked, { deleteChecked = it })
+                    Text("أفهم أن حذف الحساب نهائي ولا يمكن التراجع عنه", color = TextSec, fontFamily = Font, fontSize = 12.sp)
+                }
+                if (deleteError.isNotBlank()) Text(deleteError, color = Red, fontFamily = Font, fontSize = 12.sp)
+            }
+        },
+        confirmButton = {
+            Button(enabled = !deleting && deleteName.trim() == AuthStore.displayName.trim() && deleteChecked,
+                onClick = { deleteDialog = false; finalDeleteDialog = true },
+                colors = ButtonDefaults.buttonColors(containerColor = Red), shape = ButtonShape) { Text("متابعة", fontFamily = Font) }
+        },
+        dismissButton = { TextButton({ if (!deleting) deleteDialog = false }) { Text("إلغاء", color = TextSec, fontFamily = Font) } }
+    )
+
+    if (finalDeleteDialog) AlertDialog(
+        onDismissRequest = { if (!deleting) finalDeleteDialog = false }, containerColor = Surface2,
+        title = { Text("تأكيد حذف الحساب", color = Red, fontFamily = Font, fontWeight = FontWeight.Bold) },
+        text = { Text("سيتم حذف حسابك نهائياً الآن. هل تريد المتابعة؟", color = TextSec, fontFamily = Font) },
+        confirmButton = {
+            Button(enabled = !deleting, onClick = {
+                deleting = true
+                scope.launch {
+                    runCatching { AuthStore.deleteAccount(context) }
+                        .onSuccess { finalDeleteDialog = false; onDeleted() }
+                        .onFailure { deleteError = it.message ?: "تعذر حذف الحساب"; finalDeleteDialog = false; deleteDialog = true }
+                    deleting = false
+                }
+            }, colors = ButtonDefaults.buttonColors(containerColor = Red), shape = ButtonShape) {
+                Text(if (deleting) "جارٍ الحذف..." else "حذف نهائياً", fontFamily = Font)
+            }
+        },
+        dismissButton = { TextButton({ if (!deleting) finalDeleteDialog = false }) { Text("إلغاء", color = TextSec, fontFamily = Font) } }
+    )
 
     if (picker) {
         Box(Modifier.fillMaxSize().background(Color.Black.copy(.78f)).clickable { picker=false }, Alignment.Center) {

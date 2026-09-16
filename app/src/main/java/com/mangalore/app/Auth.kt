@@ -180,6 +180,12 @@ object AuthStore {
         request("/auth/v1/user", "PUT", JSONObject().put("data", metadata), accessToken)
     }
 
+    suspend fun deleteAccount(context: Context) {
+        require(hasSession()) { "لا توجد جلسة مستخدم" }
+        request("/auth/v1/user", "DELETE", null, accessToken)
+        signOut(context)
+    }
+
     fun signOut(context: Context) {
         accessToken = ""; userId = ""; displayName = ""; avatarUrl = ""
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().apply()
