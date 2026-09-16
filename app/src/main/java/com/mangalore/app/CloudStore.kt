@@ -45,6 +45,32 @@ object CloudStore {
         if (AuthStore.hasSession()) call("/rest/v1/library_items?user_id=eq.${AuthStore.userId}&manga_url=eq.${java.net.URLEncoder.encode(url, "UTF-8")}", "DELETE")
     }
 
+    suspend fun fetchCustomLists(): Map<String, List<MangaItem>> {
+        if (!AuthStore.hasSession()) return emptyMap()
+        val encoded = java.net.URLEncoder.encode(AuthStore.userId, "UTF-8")
+        val arr = JSONArray(call("/rest/v1/custom_manga_lists?user_id=eq.$encoded&select=list_name,manga_url,manga_slug,manga_title,cover_url,cover_full&order=created_at.asc", "GET"))
+        val out = linkedMapOf<String, MutableList<MangaItem>>()
+        for (i in 0 until arr.length()) {
+            val o = arr.optJSONObject(i) ?: continue
+            out.getOrPut(o.optString("list_name")) { mutableListOf() }.add(MangaItem(o.optString("manga_slug"), o.optString("manga_title"), o.optString("manga_slug"), o.optString("cover_url"), o.optString("cover_full"), o.optString("manga_url")))
+        }
+        return out
+    }
+
+    suspend fun addCustomList(name: String, item: MangaItem) {
+        if (!AuthStore.hasSession()) return
+        val o = JSONObject().put("user_id", AuthStore.userId).put("list_name", name).put("manga_url", item.url).put("manga_slug", item.slug).put("manga_title", item.title).put("cover_url", item.coverUrl).put("cover_full", item.coverFull)
+        call("/rest/v1/custom_manga_lists", "POST", o.toString())
+    }
+
+    suspend fun removeCustomListItem(name: String, url: String) {
+        if (AuthStore.hasSession()) call("/rest/v1/custom_manga_lists?user_id=eq.${AuthStore.userId}&list_name=eq.${java.net.URLEncoder.encode(name, "UTF-8")}&manga_url=eq.${java.net.URLEncoder.encode(url, "UTF-8")}", "DELETE")
+    }
+
+    suspend fun deleteCustomList(name: String) {
+        if (AuthStore.hasSession()) call("/rest/v1/custom_manga_lists?user_id=eq.${AuthStore.userId}&list_name=eq.${java.net.URLEncoder.encode(name, "UTF-8")}", "DELETE")
+    }
+
     suspend fun saveProgress(item: MangaItem, chapterUrl: String, chapterNumber: String, chapterIndex: Int, page: Int, total: Int, completed: Boolean) {
         if (!AuthStore.hasSession()) return
         val o = JSONObject().put("user_id", AuthStore.userId).put("manga_url", item.url).put("manga_slug", item.slug).put("manga_title", item.title).put("cover_url", item.coverUrl).put("chapter_url", chapterUrl).put("chapter_number", chapterNumber).put("chapter_index", chapterIndex).put("page", page).put("total_pages", total).put("completed", completed)

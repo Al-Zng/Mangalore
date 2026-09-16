@@ -235,7 +235,7 @@ private fun SplashScreen() {
 }
 
 @Composable
-private fun AuthScreen(onSignedIn: () -> Unit, onGoogle: () -> Unit) {
+private fun AuthScreen(onSignedIn: () -> Unit, onGoogle: () -> Unit, onGuest: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var register by remember { mutableStateOf(false) }
@@ -414,6 +414,10 @@ private fun AuthScreen(onSignedIn: () -> Unit, onGoogle: () -> Unit) {
                         Spacer(Modifier.width(10.dp))
                         Text("المتابعة مع Google", color = TextPri, fontWeight = FontWeight.Medium, fontSize = 14.sp, fontFamily = Font)
                     }
+                    Spacer(Modifier.height(10.dp))
+                    TextButton(onClick = onGuest, modifier = Modifier.fillMaxWidth()) {
+                        Text("الدخول كضيف", color = AccentLt, fontFamily = Font, fontSize = 14.sp)
+                    }
                 }
             }
 
@@ -433,6 +437,7 @@ private fun App(oauthTick: Int = 0) {
     val appScope = rememberCoroutineScope()
     var authReady by remember { mutableStateOf(false) }
     var signedIn by remember { mutableStateOf(false) }
+    var guestMode by remember { mutableStateOf(false) }
     var showGoogleDialog by remember { mutableStateOf(false) }
     var authNotice by remember { mutableStateOf("") }
     LaunchedEffect(oauthTick) {
@@ -440,6 +445,7 @@ private fun App(oauthTick: Int = 0) {
         if (uri?.scheme == "mangalore") {
             AuthStore.completeAuthCallback(context, uri).onSuccess {
                 signedIn = true
+                guestMode = false
                 if (uri.fragment?.contains("type=signup") == true || uri.getQueryParameter("type") == "signup") {
                     authNotice = "تم التحقق من البريد الإلكتروني، وتم تسجيل الدخول تلقائياً"
                 }
@@ -454,18 +460,18 @@ private fun App(oauthTick: Int = 0) {
         SplashScreen()
         return
     }
-    if (!signedIn) {
+    if (!signedIn && !guestMode) {
         MaterialTheme(
             colorScheme = darkColorScheme(background = Bg, surface = Surface2, primary = Accent),
             typography = AppTypography,
             shapes = Shapes(extraSmall = InputShape, small = InputShape, medium = InputShape, large = InputShape, extraLarge = InputShape)
         ) {
-            AuthScreen(onSignedIn = { signedIn = true }, onGoogle = { showGoogleDialog = true })
+            AuthScreen(onSignedIn = { signedIn = true; guestMode = false }, onGoogle = { showGoogleDialog = true }, onGuest = { guestMode = true })
             if (showGoogleDialog) {
                 GoogleAuthDialog(
                     onSigned = { uri ->
                         showGoogleDialog = false
-                        appScope.launch { AuthStore.completeGoogle(context, uri).onSuccess { signedIn = true } }
+                        appScope.launch { AuthStore.completeGoogle(context, uri).onSuccess { signedIn = true; guestMode = false } }
                     },
                     onDismiss = { showGoogleDialog = false }
                 )
@@ -564,8 +570,8 @@ private fun App(oauthTick: Int = 0) {
                             { amoled = it; settingsPrefs.edit().putBoolean("amoled", it).apply() },
                             { accent = it; settingsPrefs.edit().putInt("accent", it.toArgb()).apply() },
                             ::pop,
-                            { AuthStore.signOut(context); signedIn = false },
-                            { signedIn = false }
+                            { AuthStore.signOut(context); signedIn = false; guestMode = false },
+                            { signedIn = false; guestMode = false }
                         )
                         is Dest.Detail -> DetailLoadingScreen(d.item, accent, lib, ::pop) { replaceTop(Dest.DetailFull(it)) }
                         is Dest.DetailFull -> DetailScreen(
@@ -1854,7 +1860,11 @@ private fun DetailScreen(
             title = { Text("إضافة إلى قائمة", color = TextPri, fontFamily = Font, fontWeight = FontWeight.Bold) },
             text = {
                 if (names.isEmpty()) Text("لا توجد قوائم مخصصة. أنشئ قائمة من قسم قوائمي أولاً.", color = TextSec, fontFamily = Font)
-                else Column { names.forEach { name -> TextButton({ CustomListsStore.add(context, name, asItem); showListPicker = false }, modifier = Modifier.fillMaxWidth()) { Text(name, color = TextPri, fontFamily = Font) } } }
+                else Column { names.forEach { name -> TextButton({
+                    CustomListsStore.add(context, name, asItem)
+                    if (AuthStore.hasSession()) cloudScope.launch { runCatching { CloudStore.addCustomList(name, asItem) } }
+                    showListPicker = false
+                }, modifier = Modifier.fillMaxWidth()) { Text(name, color = TextPri, fontFamily = Font) } } }
             },
             confirmButton = { TextButton({ showListPicker = false }) { Text("إغلاق", color = TextSec, fontFamily = Font) } })
     }
@@ -2806,22 +2816,25 @@ private fun SpringCard(onClick:()->Unit, content:@Composable ()->Unit) {
 @Composable
 private fun CustomListsScreen(accent: Color, onBack: () -> Unit, onPick: (MangaItem) -> Unit) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var names by remember { mutableStateOf(CustomListsStore.names(context)) }
     var selected by remember { mutableStateOf<String?>(null) }
     var items by remember { mutableStateOf(emptyList<MangaItem>()) }
+    var cloudLists by remember { mutableStateOf<Map<String, List<MangaItem>>>(emptyMap()) }
     var creating by remember { mutableStateOf(false) }
     var nameInput by remember { mutableStateOf("") }
-    fun refresh() { names = CustomListsStore.names(context); selected?.let { items = CustomListsStore.get(context, it) } }
+    fun refresh() { names = if (AuthStore.hasSession()) cloudLists.keys.sorted() else CustomListsStore.names(context); selected?.let { items = cloudLists[it] ?: CustomListsStore.get(context, it) } }
+    LaunchedEffect(Unit) { if (AuthStore.hasSession()) runCatching { CloudStore.fetchCustomLists() }.onSuccess { cloudLists = it; names = it.keys.sorted() } }
     Column(Modifier.fillMaxSize()) {
         TopBar("قوائمي", accent, onBack, action = { IconButton({ creating = true; nameInput = "" }) { Icon(Icons.Default.Add, "إنشاء قائمة", tint = accent) } })
         if (names.isEmpty()) EmptyState(Icons.Default.PlaylistPlay, "لا توجد قوائم", "أنشئ قائمة من زر الإضافة")
         else LazyColumn(contentPadding = PaddingValues(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             items(names) { name ->
-                val count = CustomListsStore.get(context, name).size
+                val count = (cloudLists[name] ?: CustomListsStore.get(context, name)).size
                 Surface(color = if (selected == name) accent.copy(.15f) else Surface2, shape = InputShape, border = BorderStroke(1.dp, if (selected == name) accent else Border)) {
-                    Row(Modifier.fillMaxWidth().clickable { selected = name; items = CustomListsStore.get(context, name) }.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.fillMaxWidth().clickable { selected = name; items = cloudLists[name] ?: CustomListsStore.get(context, name) }.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.PlaylistPlay, null, tint = accent, modifier = Modifier.size(24.dp)); Spacer(Modifier.width(10.dp)); Column(Modifier.weight(1f)) { Text(name, color = TextPri, fontWeight = FontWeight.Bold); Text("$count مانجا", color = TextSec, fontSize = 12.sp) }
-                        IconButton({ CustomListsStore.delete(context, name); if (selected == name) { selected = null; items = emptyList() }; refresh() }) { Icon(Icons.Default.DeleteOutline, "حذف", tint = Red) }
+                        IconButton({ if (AuthStore.hasSession()) scope.launch { runCatching { CloudStore.deleteCustomList(name) }; cloudLists = cloudLists - name; refresh() } else { CustomListsStore.delete(context, name); if (selected == name) { selected = null; items = emptyList() }; refresh() } }) { Icon(Icons.Default.DeleteOutline, "حذف", tint = Red) }
                     }
                 }
             }
@@ -2831,7 +2844,7 @@ private fun CustomListsScreen(accent: Color, onBack: () -> Unit, onPick: (MangaI
                     Row(Modifier.fillMaxWidth().clickable { onPick(manga) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                         Box(Modifier.size(46.dp, 64.dp).clip(RoundedCornerShape(8.dp))) { Img(manga.coverUrl, Modifier.fillMaxSize()) }
                         Text(manga.title, color = TextPri, modifier = Modifier.weight(1f).padding(horizontal = 10.dp), maxLines = 2, overflow = TextOverflow.Ellipsis)
-                        IconButton({ CustomListsStore.remove(context, selected!!, manga.url); refresh() }) { Icon(Icons.Default.Close, "إزالة", tint = TextDim) }
+                        IconButton({ if (AuthStore.hasSession()) scope.launch { runCatching { CloudStore.removeCustomListItem(selected!!, manga.url) }; cloudLists = cloudLists.mapValues { if (it.key == selected) it.value.filterNot { m -> m.url == manga.url } else it.value }; refresh() } else { CustomListsStore.remove(context, selected!!, manga.url); refresh() } }) { Icon(Icons.Default.Close, "إزالة", tint = TextDim) }
                     }
                 }
             }
@@ -2840,6 +2853,6 @@ private fun CustomListsScreen(accent: Color, onBack: () -> Unit, onPick: (MangaI
     if (creating) AlertDialog(onDismissRequest = { creating = false }, containerColor = Surface2,
         title = { Text("قائمة جديدة", color = TextPri, fontFamily = Font) },
         text = { OutlinedTextField(nameInput, { nameInput = it }, label = { Text("اسم القائمة") }, singleLine = true, shape = InputShape) },
-        confirmButton = { TextButton({ if (CustomListsStore.create(context, nameInput)) { creating = false; refresh() } }) { Text("إنشاء", color = accent) } },
+        confirmButton = { TextButton({ if (nameInput.trim().isNotBlank() && !names.contains(nameInput.trim())) { CustomListsStore.create(context, nameInput); names = names + nameInput.trim(); creating = false; refresh() } }) { Text("إنشاء", color = accent) } },
         dismissButton = { TextButton({ creating = false }) { Text("إلغاء", color = TextSec) } })
 }
