@@ -101,7 +101,13 @@ object AuthStore {
         if (body != null) builder.method(method, body.toString().toRequestBody(jsonType)) else builder.method(method, null)
         http.newCall(builder.build()).execute().use { response ->
             val text = response.body?.string().orEmpty()
-            if (!response.isSuccessful) throw IllegalStateException(JSONObject(text).optString("msg").ifBlank { JSONObject(text).optString("message") }.ifBlank { "تعذر إكمال الطلب" })
+            if (!response.isSuccessful) {
+                val error = runCatching { JSONObject(text) }.getOrNull()
+                throw IllegalStateException(
+                    error?.optString("msg").orEmpty().ifBlank { error?.optString("message").orEmpty() }
+                        .ifBlank { "تعذر إكمال الطلب (${response.code})" }
+                )
+            }
             JSONObject(if (text.isBlank()) "{}" else text)
         }
     }
@@ -182,7 +188,7 @@ object AuthStore {
 
     suspend fun deleteAccount(context: Context) {
         require(hasSession()) { "لا توجد جلسة مستخدم" }
-        request("/auth/v1/user", "DELETE", null, accessToken)
+        request("/functions/v1/delete-account", "POST", JSONObject(), accessToken)
         signOut(context)
     }
 
