@@ -488,7 +488,9 @@ private fun App(oauthTick: Int = 0) {
                 lib.clear()
                 lib.addAll(remote)
             }
-            runCatching { CloudStore.fetchProgress() }.onSuccess { remote -> hist = remote }
+            runCatching { CloudStore.fetchProgress() }.onSuccess { remote ->
+                hist = remote.distinctBy { it.manga.url }
+            }
         }
     }
 
@@ -567,7 +569,7 @@ private fun App(oauthTick: Int = 0) {
                             d.d, accent, lib, hist, ::pop,
                             onChapter = { ch, index ->
                                 val asItem = MangaItem(d.d.slug, d.d.title, d.d.slug, d.d.coverUrl, d.d.coverFull, d.d.url)
-                                hist = listOf(ReadingProgress(asItem, d.d, index)) + hist.filterNot { it.manga.url == d.d.url && it.chapterIndex == index }
+                                hist = listOf(ReadingProgress(asItem, d.d, index)) + hist.filterNot { it.manga.url == d.d.url }
                                 push(Dest.Reader(ch.url, ch.title.ifEmpty { "الفصل ${ch.number}" }, d.d, index, 1))
                             },
                             onContinue = { saved ->
@@ -577,7 +579,7 @@ private fun App(oauthTick: Int = 0) {
                         is Dest.Reader -> key("${d.url}-${d.chapterIndex}-$readerRefresh") { ReaderScreen(
                             d.url, d.chTitle, d.manga, d.chapterIndex, accent, ::pop, d.page,
                             onProgress = { page, total, completed ->
-                                hist = hist.map { p -> if (p.manga.url == d.manga.url && p.chapterIndex == d.chapterIndex) p.copy(page = page, totalPages = total, completed = completed) else p }
+                                hist = hist.map { p -> if (p.manga.url == d.manga.url) p.copy(manga = d.manga, item = MangaItem(d.manga.slug, d.manga.title, d.manga.slug, d.manga.coverUrl, d.manga.coverFull, d.manga.url), chapterIndex = d.chapterIndex, page = page, totalPages = total, completed = completed) else p }
                                 val ch = d.manga.chapters.getOrNull(d.chapterIndex)
                                 if (ch != null) appScope.launch { runCatching { CloudStore.saveProgress(MangaItem(d.manga.slug, d.manga.title, d.manga.slug, d.manga.coverUrl, d.manga.coverFull, d.manga.url), ch.url, ch.number, d.chapterIndex, page, total, completed) } }
                             },
@@ -1493,15 +1495,15 @@ private fun DetailScreen(
         // ── Actions bar ───────────────────────────────────────
         item {
             Surface(color = Surface2) {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FlowRow(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp), maxItemsInEachRow = 2) {
                     if (d.chapters.isNotEmpty()) {
                         val saved = history.filter { it.manga.url == d.url && !it.completed }
                             .maxByOrNull { it.chapterIndex }
                         Button({
                             if (saved != null && saved.chapterIndex in d.chapters.indices) onContinue(saved)
                             else onChapter(d.chapters.last(), d.chapters.lastIndex)
-                        }, Modifier.weight(1f),
+                        }, Modifier.weight(1f).defaultMinSize(minHeight = 48.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = accent),
                             shape = ButtonShape) {
                             Icon(Icons.Default.PlayArrow, null, Modifier.size(16.dp))
@@ -1509,7 +1511,7 @@ private fun DetailScreen(
                             Text(if (saved != null) "أكمل الفصل ${d.chapters[saved.chapterIndex].number} · ص${saved.page}" else "ابدأ القراءة", fontSize = 13.sp, fontFamily = Font)
                         }
                         if (d.chapters.size > 1) {
-                                Button({ onChapter(d.chapters.first(), 0) }, Modifier.wrapContentWidth(),
+                                Button({ onChapter(d.chapters.first(), 0) }, Modifier.defaultMinSize(minWidth = 112.dp, minHeight = 48.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = Surface3),
                                 shape = ButtonShape) {
                                 Icon(Icons.Default.LastPage, null, Modifier.size(16.dp))
@@ -1530,7 +1532,7 @@ private fun DetailScreen(
                         },
                         border = BorderStroke(1.dp, if (inLib) accent else Border),
                         shape  = RoundedCornerShape(10.dp),
-                        modifier = Modifier.wrapContentWidth()) {
+                        modifier = Modifier.defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)) {
                         Icon(if (inLib) Icons.Default.Bookmark else Icons.Outlined.BookmarkBorder,
                             null, tint = if (inLib) accent else TextSec, modifier = Modifier.size(16.dp))
                     }
@@ -1539,7 +1541,7 @@ private fun DetailScreen(
                         shape = ButtonShape,
                         colors = ButtonDefaults.buttonColors(containerColor = accent),
                         contentPadding = PaddingValues(horizontal = 13.dp, vertical = 9.dp),
-                        modifier = Modifier.wrapContentWidth()
+                        modifier = Modifier.defaultMinSize(minWidth = 86.dp, minHeight = 48.dp)
                     ) {
                         Icon(Icons.Default.Download, "تنزيل الفصول", tint = Color.White, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(6.dp))
@@ -2189,7 +2191,8 @@ private fun HistoryScreen(accent:Color, hist:List<ReadingProgress>,
                             Text(h.item.title, color=TextPri, fontSize=14.sp, maxLines=1,
                                 overflow=TextOverflow.Ellipsis, fontWeight=FontWeight.Medium)
                             Spacer(Modifier.height(3.dp))
-                            Text("الفصل ${h.manga.chapters[h.chapterIndex].number} · الصفحة ${h.page}", color=accent, fontSize=12.sp, fontFamily = Font)
+                            val chapter = h.manga.chapters.getOrNull(h.chapterIndex)
+                            Text("الفصل ${chapter?.number ?: "?"} · الصفحة ${h.page}", color=accent, fontSize=12.sp, fontFamily = Font)
                             if (h.completed) Text("تمت المشاهدة", color = Green, fontSize = 10.sp, fontFamily = Font)
                         }
                         Icon(Icons.Default.ChevronLeft, null, tint=TextDim, modifier=Modifier.size(17.dp))
@@ -2207,24 +2210,23 @@ private fun HistoryScreen(accent:Color, hist:List<ReadingProgress>,
 @Composable
 private fun DownloadsScreen(accent: Color, onBack: () -> Unit) {
     val context = LocalContext.current
-    var rows by remember { mutableStateOf(LocalDownloads.items(context)) }
-    LaunchedEffect(Unit) { while (true) { rows = LocalDownloads.items(context); delay(1000) } }
+    var rows by remember { mutableStateOf(LocalDownloads.groups(context)) }
+    LaunchedEffect(Unit) { while (true) { rows = LocalDownloads.groups(context); delay(1000) } }
     Column(Modifier.fillMaxSize()) {
         TopBar("التنزيلات", accent, onBack)
         if (rows.isEmpty()) {
             EmptyState(Icons.Default.Download, "لا توجد تنزيلات", "حدد فصولًا من صفحة المانجا لتنزيلها على جهازك")
         } else {
             LazyColumn(contentPadding = PaddingValues(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                items(rows) { raw ->
-                    val parts = raw.split("|")
-                    val title = parts.getOrNull(0).orEmpty()
-                    val total = parts.getOrNull(1).orEmpty()
-                    val done = parts.getOrNull(2).orEmpty()
+                items(rows, key = { it.key }) { group ->
                     Surface(color = Surface2, shape = InputShape, border = BorderStroke(1.dp, Border)) {
-                        Column(Modifier.padding(14.dp)) {
-                            Text(title, color = TextPri, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                            Text("$done من $total فصل", color = TextSec, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
-                            LinearProgressIndicator(progress = { (done.toFloatOrNull() ?: 0f) / (total.toFloatOrNull() ?: 1f) }, color = accent, trackColor = Surface3, modifier = Modifier.fillMaxWidth().padding(top = 10.dp))
+                        Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Box(Modifier.size(54.dp, 78.dp).clip(RoundedCornerShape(10.dp))) { Img(group.cover, Modifier.fillMaxSize()) }
+                            Column(Modifier.weight(1f)) {
+                                Text(group.title, color = TextPri, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                Text("${group.done} فصل محمّل", color = TextSec, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
+                                LinearProgressIndicator(progress = { if (group.total > 0) group.done.toFloat() / group.total else 0f }, color = accent, trackColor = Surface3, modifier = Modifier.fillMaxWidth().padding(top = 10.dp))
+                            }
                         }
                     }
                 }

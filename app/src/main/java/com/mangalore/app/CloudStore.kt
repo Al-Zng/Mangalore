@@ -54,8 +54,10 @@ object CloudStore {
     suspend fun fetchProgress(): List<ReadingProgress> {
         if (!AuthStore.hasSession()) return emptyList()
         val arr = JSONArray(call("/rest/v1/reading_progress?user_id=eq.${AuthStore.userId}&select=manga_url,manga_slug,manga_title,cover_url,chapter_url,chapter_number,page,total_pages,completed&order=updated_at.desc", "GET"))
+        val seenManga = mutableSetOf<String>()
         return (0 until arr.length()).mapNotNull { i ->
             val o = arr.optJSONObject(i) ?: return@mapNotNull null
+            if (!seenManga.add(o.optString("manga_url"))) return@mapNotNull null
             val item = MangaItem(o.optString("manga_slug"), o.optString("manga_title"), o.optString("manga_slug"), o.optString("cover_url"), o.optString("cover_url"), o.optString("manga_url"))
             val chapter = ChapterItem(o.optString("chapter_number"), "", o.optString("chapter_url"), "")
             val manga = MangaDetail(item.title, item.slug, item.coverUrl, item.coverFull, item.url, emptyList(), "", "", "", "", "", "", "", listOf(chapter))
