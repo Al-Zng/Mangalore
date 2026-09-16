@@ -60,10 +60,11 @@ object AuthStore {
     }
     suspend fun completeAuthCallback(context: Context, uri: Uri): Result<Unit> = runCatching {
         val fragment = uri.fragment.orEmpty().removePrefix("#")
-        val params = fragment.split("&").mapNotNull { part ->
+        val fragmentParams = fragment.split("&").mapNotNull { part ->
             val bits = part.split("=", limit = 2)
             if (bits.size == 2) java.net.URLDecoder.decode(bits[0], "UTF-8") to java.net.URLDecoder.decode(bits[1], "UTF-8") else null
         }.toMap()
+        val params = fragmentParams + uri.queryParameterNames.associateWith { uri.getQueryParameter(it).orEmpty() }
         val token = params["access_token"].orEmpty()
         if (token.isBlank()) error("لم يكتمل التحقق من البريد الإلكتروني")
         accessToken = token
