@@ -338,7 +338,7 @@ object Scraper {
             val chUrl   = a.attr("href").trim()
             val chTitle = cleanBranding(a.text().trim())
             val date    = li.selectFirst(".chapter-release-date i, .chapter-release-date")
-                ?.text()?.trim().orEmpty().ifBlank { ani?.updatedAt.orEmpty() }
+                ?.text()?.trim().orEmpty().ifBlank { ani?.updatedAt?.takeIf { it != "0" }.orEmpty() }
             val num  = chTitle.replace(Regex("[^0-9.]"), "").trim()
             ChapterItem(
                 number = num.ifEmpty { "?" },
