@@ -105,6 +105,15 @@ private val Font = FontFamily(
 )
 private val InputShape = RoundedCornerShape(24.dp)
 private val ButtonShape = RoundedCornerShape(20.dp)
+private val AppTypography = Typography().let { t ->
+    t.copy(
+        displayLarge = t.displayLarge.copy(fontFamily = Font), displayMedium = t.displayMedium.copy(fontFamily = Font), displaySmall = t.displaySmall.copy(fontFamily = Font),
+        headlineLarge = t.headlineLarge.copy(fontFamily = Font), headlineMedium = t.headlineMedium.copy(fontFamily = Font), headlineSmall = t.headlineSmall.copy(fontFamily = Font),
+        titleLarge = t.titleLarge.copy(fontFamily = Font), titleMedium = t.titleMedium.copy(fontFamily = Font), titleSmall = t.titleSmall.copy(fontFamily = Font),
+        bodyLarge = t.bodyLarge.copy(fontFamily = Font), bodyMedium = t.bodyMedium.copy(fontFamily = Font), bodySmall = t.bodySmall.copy(fontFamily = Font),
+        labelLarge = t.labelLarge.copy(fontFamily = Font), labelMedium = t.labelMedium.copy(fontFamily = Font), labelSmall = t.labelSmall.copy(fontFamily = Font)
+    )
+}
 
 @Composable
 private fun BrandMark(modifier: Modifier = Modifier) {
@@ -406,15 +415,21 @@ private fun App(oauthTick: Int = 0) {
         return
     }
     if (!signedIn) {
-        AuthScreen(onSignedIn = { signedIn = true }, onGoogle = { showGoogleDialog = true })
-        if (showGoogleDialog) {
-            GoogleAuthDialog(
-                onSigned = { uri ->
-                    showGoogleDialog = false
-                    appScope.launch { AuthStore.completeGoogle(context, uri).onSuccess { signedIn = true } }
-                },
-                onDismiss = { showGoogleDialog = false }
-            )
+        MaterialTheme(
+            colorScheme = darkColorScheme(background = Bg, surface = Surface2, primary = Accent),
+            typography = AppTypography,
+            shapes = Shapes(extraSmall = InputShape, small = InputShape, medium = InputShape, large = InputShape, extraLarge = InputShape)
+        ) {
+            AuthScreen(onSignedIn = { signedIn = true }, onGoogle = { showGoogleDialog = true })
+            if (showGoogleDialog) {
+                GoogleAuthDialog(
+                    onSigned = { uri ->
+                        showGoogleDialog = false
+                        appScope.launch { AuthStore.completeGoogle(context, uri).onSuccess { signedIn = true } }
+                    },
+                    onDismiss = { showGoogleDialog = false }
+                )
+            }
         }
         return
     }
@@ -451,7 +466,15 @@ private fun App(oauthTick: Int = 0) {
     BackHandler(stack.size > 1 || drawer) { if (drawer) drawer = false else pop() }
 
     MaterialTheme(
-        colorScheme = darkColorScheme(background = appBg, surface = Surface2, primary = accent)
+        colorScheme = darkColorScheme(background = appBg, surface = Surface2, primary = accent),
+        typography = AppTypography,
+        shapes = Shapes(
+            extraSmall = InputShape,
+            small = InputShape,
+            medium = InputShape,
+            large = InputShape,
+            extraLarge = InputShape
+        )
     ) {
         CompositionLocalProvider(
             LocalLayoutDirection provides LayoutDirection.Rtl,

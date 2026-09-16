@@ -119,7 +119,10 @@ object AuthStore {
     private suspend fun fetchProfile(context: Context) {
         runCatching {
             val user = request("/auth/v1/user", "GET", null, accessToken)
-            avatarUrl = user.optJSONObject("user_metadata")?.optString("avatar_url", avatarUrl).orEmpty()
+            val metadata = user.optJSONObject("user_metadata")
+            avatarUrl = metadata?.optString("avatar_url").orEmpty()
+                .ifBlank { metadata?.optString("picture").orEmpty() }
+                .ifBlank { avatarUrl }
             val obj = request("/rest/v1/profiles?id=eq.$userId&select=display_name,username", "GET", null, accessToken)
             displayName = obj.optString("display_name", displayName)
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
