@@ -7,6 +7,7 @@ import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.jsoup.Jsoup
+import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
 // ─────────────────────────────────────────────────────────────
@@ -67,6 +68,17 @@ object Scraper {
     private fun cleanMeta(v: String): String {
         val bad = setOf("updating", "n/a", "unknown", "-", "?", "تحديث", "جاري التحديث")
         return if (v.trim().lowercase() in bad) "" else v.trim()
+    }
+
+    private fun normalizeStatus(value: String): String {
+        val v = value.trim().lowercase()
+        return when {
+            v.contains("completed") || v.contains("complete") || v.contains("finished") ||
+                v.contains("منته") || v.contains("مكتمل") -> "مكتملة"
+            v.contains("ongoing") || v.contains("on-going") || v.contains("ongoing") ||
+                v.contains("مستمر") -> "مستمرة"
+            else -> value.trim()
+        }
     }
 
     private const val BASE = "https://mangalik.net"
@@ -199,20 +211,32 @@ object Scraper {
         // Meta fields - handle both Arabic and English labels
         fun metaVal(vararg labels: String): String {
             return doc.select(".post-content_item").firstOrNull { el ->
-                val h = el.selectFirst(".summary-heading h5")?.text()?.trim() ?: ""
+                val h = el.selectFirst(".summary-heading h5")?.text()?.trim().orEmpty()
+                    .replace(Regex("\\s+"), " ")
                 labels.any { h.contains(it, ignoreCase = true) }
             }?.selectFirst(".summary-content")?.text()?.trim() ?: ""
         }
 
-        val status = cleanMeta(metaVal("الحالة", "Status", "Durum"))
-        val author = cleanMeta(metaVal("المؤلف", "Author", "Yazar"))
+        fun jsonLd(): JSONObject? = doc.select("script[type=application/ld+json]")
+            .mapNotNull { runCatching { JSONObject(it.data().trim()) }.getOrNull() }
+            .firstOrNull { it.optString("@type") == "Article" }
+
+        val article = jsonLd()
+        val publishedYear = article?.optString("datePublished")?.take(4).orEmpty()
+
+        val status = normalizeStatus(cleanMeta(metaVal("الحالة", "Status", "Durum")))
+        val author = cleanMeta(metaVal("المؤلف", "Author", "Yazar")).ifEmpty {
+            cleanMeta(article?.optJSONObject("author")?.optString("name").orEmpty())
+        }
         val artist = cleanMeta(metaVal("الرسام", "Artist", "Çizer"))
-        val year   = cleanMeta(metaVal("سنة", "Released", "Year"))
-        val origin = cleanMeta(metaVal("النوع", "Type", "Tür"))
+        val year   = cleanMeta(metaVal("سنة", "Released", "Year")).ifEmpty { publishedYear }
+        val origin = cleanMeta(metaVal("النوع", "Type", "Tür")).ifEmpty { genres.joinToString(" , ") }
 
         // Description - clean of links/tags
         val desc = doc.selectFirst(".description-summary .summary__content, .description-summary p, .manga-excerpt p")
-            ?.text()?.trim() ?: ""
+            ?.text()?.trim().orEmpty().ifEmpty {
+                doc.selectFirst("meta[property=og:description]")?.attr("content")?.trim().orEmpty()
+            }
 
         // Rating
         val rating = doc.selectFirst(".score.font-meta, .post-rating .score")?.text()?.trim() ?: ""
