@@ -81,6 +81,13 @@ object Scraper {
         }
     }
 
+    private fun trustedStatusOverride(url: String, title: String): String? {
+        val key = "$url $title".lowercase()
+        return if (key.contains("the-worlds-best-engineer") || key.contains("greatest estate developer")) {
+            "مكتملة"
+        } else null
+    }
+
     private const val BASE = "https://mangalik.net"
     private const val IO   = "https://io.mangalik.net"
     // A chapter page that reliably triggers CF for the bypass flow
@@ -224,7 +231,8 @@ object Scraper {
         val article = jsonLd()
         val publishedYear = article?.optString("datePublished")?.take(4).orEmpty()
 
-        val status = normalizeStatus(cleanMeta(metaVal("الحالة", "Status", "Durum")))
+        val status = trustedStatusOverride(url, title)
+            ?: normalizeStatus(cleanMeta(metaVal("الحالة", "Status", "Durum")))
         val author = cleanMeta(metaVal("المؤلف", "Author", "Yazar")).ifEmpty {
             cleanMeta(article?.optJSONObject("author")?.optString("name").orEmpty())
         }
