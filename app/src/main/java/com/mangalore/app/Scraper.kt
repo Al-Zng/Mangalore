@@ -107,6 +107,16 @@ object Scraper {
         else -> ""
     }
 
+    private fun normalizeWorkType(value: String): String {
+        val v = value.trim().lowercase()
+        return when {
+            v.contains("مانهوا") || v.contains("manhwa") || v.contains("korea") -> "مانهوا"
+            v.contains("مانها") || v.contains("manhua") || v.contains("china") || v.contains("taiwan") -> "مانها"
+            v.contains("مانجا") || v.contains("manga") || v.contains("japan") -> "مانجا"
+            else -> ""
+        }
+    }
+
     private fun trustedStatusOverride(url: String, title: String): String? {
         val key = "$url $title".lowercase()
         return if (key.contains("the-worlds-best-engineer") || key.contains("greatest estate developer")) {
@@ -301,8 +311,8 @@ object Scraper {
         val author = ani?.author.orEmpty().ifEmpty { siteAuthor }
         val artist = ani?.artist.orEmpty().ifEmpty { cleanMeta(metaVal("الرسام", "Artist", "Çizer")) }
         val year   = ani?.year.orEmpty().ifEmpty { cleanMeta(metaVal("سنة", "Released", "Year")).ifEmpty { publishedYear } }
-        val siteOrigin = cleanMeta(metaVal("النوع", "Type", "Tür")).ifEmpty { genres.joinToString(" , ") }
-        val origin = ani?.format.orEmpty().ifEmpty { siteOrigin }
+        val siteOrigin = normalizeWorkType(cleanMeta(metaVal("النوع", "Type", "Tür")))
+        val origin = normalizeWorkType(ani?.format.orEmpty()).ifEmpty { siteOrigin }
 
         // Description - clean of links/tags
         val siteDesc = doc.selectFirst(".description-summary .summary__content, .description-summary p, .manga-excerpt p")

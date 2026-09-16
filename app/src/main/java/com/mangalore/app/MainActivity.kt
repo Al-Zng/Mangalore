@@ -1560,7 +1560,7 @@ private fun DetailScreen(
                     }
                 }
             }
-            if (d.genres.size > 3) {
+            if (d.genres.isNotEmpty()) {
                 item {
                     FlowRow(Modifier.padding(horizontal = 14.dp, vertical = 4.dp),
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
