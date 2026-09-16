@@ -144,9 +144,16 @@ class MainActivity : ComponentActivity() {
 private fun SplashScreen() {
     Box(Modifier.fillMaxSize().background(Bg), Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Image(painterResource(R.drawable.logo), "Mangalore", Modifier.size(150.dp), contentScale = ContentScale.Fit)
-            Spacer(Modifier.height(20.dp))
-            CircularProgressIndicator(color = Accent, modifier = Modifier.size(28.dp), strokeWidth = 2.dp)
+            Box(Modifier.size(84.dp).clip(RoundedCornerShape(24.dp))
+                .background(Brush.linearGradient(listOf(Accent.copy(.35f), Accent.copy(.1f))))
+                .border(1.5.dp, Accent.copy(.4f), RoundedCornerShape(24.dp)), Alignment.Center) {
+                Text("M", color = Accent, fontSize = 42.sp, fontWeight = FontWeight.Bold, fontFamily = Font)
+            }
+            Spacer(Modifier.height(16.dp))
+            Text("Mangalore", color = TextPri, fontSize = 26.sp, fontWeight = FontWeight.Bold,
+                fontFamily = Font, letterSpacing = (-0.5).sp)
+            Spacer(Modifier.height(24.dp))
+            CircularProgressIndicator(color = Accent, modifier = Modifier.size(26.dp), strokeWidth = 2.dp)
         }
     }
 }
@@ -161,35 +168,193 @@ private fun AuthScreen(onSignedIn: () -> Unit, onGoogle: () -> Unit) {
     var password by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf("") }
-    Box(Modifier.fillMaxSize().background(Bg).verticalScroll(rememberScrollState()), Alignment.Center) {
-        Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Image(painterResource(R.drawable.logo), "Mangalore", Modifier.size(150.dp), contentScale = ContentScale.Fit)
-            Spacer(Modifier.height(18.dp))
-            Text(if (register) "إنشاء حساب جديد" else "تسجيل الدخول", color = TextPri, fontSize = 23.sp, fontWeight = FontWeight.Bold)
-            Text("احفظ مكتبتك وسجل القراءة على حسابك", color = TextSec, fontSize = 13.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 8.dp, bottom = 20.dp))
-            if (register) OutlinedTextField(name, { name = it }, label = { Text("الاسم") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-            if (register) Spacer(Modifier.height(10.dp))
-            OutlinedTextField(email, { email = it }, label = { Text("البريد الإلكتروني") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-            Spacer(Modifier.height(10.dp))
-            OutlinedTextField(password, { password = it }, label = { Text("كلمة المرور") }, singleLine = true, visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
-            if (error.isNotBlank()) Text(error, color = Red, fontSize = 12.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 12.dp))
-            Spacer(Modifier.height(18.dp))
-            Button(enabled = !busy && email.isNotBlank() && password.length >= 6 && (!register || name.isNotBlank()), onClick = {
-                busy = true; error = ""
-                scope.launch {
-                    val result = if (register) AuthStore.signUp(context, email.trim(), password, name.trim()) else AuthStore.signIn(context, email.trim(), password)
-                    busy = false
-                    result.onSuccess { onSignedIn() }.onFailure { error = it.message ?: "تعذر إكمال العملية" }
+    var showPass by remember { mutableStateOf(false) }
+
+    Box(Modifier.fillMaxSize().background(Bg)) {
+        // Subtle gradient top accent
+        Box(Modifier.fillMaxWidth().height(280.dp).background(
+            Brush.verticalGradient(listOf(Accent.copy(.12f), Bg))))
+
+        Column(
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Spacer(Modifier.height(72.dp))
+
+            // Brand logo
+            Box(Modifier.size(72.dp).clip(RoundedCornerShape(22.dp))
+                .background(Brush.linearGradient(listOf(Accent.copy(.3f), Accent.copy(.1f))))
+                .border(1.5.dp, Accent.copy(.4f), RoundedCornerShape(22.dp)), Alignment.Center) {
+                Text("M", color = Accent, fontSize = 36.sp, fontWeight = FontWeight.Bold, fontFamily = Font)
+            }
+            Spacer(Modifier.height(14.dp))
+            Text("Mangalore", color = TextPri, fontSize = 28.sp, fontWeight = FontWeight.Bold,
+                fontFamily = Font, letterSpacing = (-0.5).sp)
+            Text("احفظ مكتبتك وتابع قراءتك", color = TextSec, fontSize = 13.sp,
+                modifier = Modifier.padding(top = 6.dp, bottom = 32.dp))
+
+            // Main card
+            Surface(
+                color = Surface2,
+                shape = RoundedCornerShape(24.dp),
+                border = BorderStroke(1.dp, Border),
+                modifier = Modifier.padding(horizontal = 20.dp).fillMaxWidth()
+            ) {
+                Column(Modifier.padding(24.dp)) {
+
+                    // Tab switcher (دخول / تسجيل)
+                    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                        .background(Surface3).padding(4.dp)) {
+                        listOf("دخول", "تسجيل").forEachIndexed { i, lbl ->
+                            val sel = (i == 1) == register
+                            Surface(
+                                color = if (sel) Accent else Color.Transparent,
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.weight(1f).clickable { register = i == 1; error = "" }
+                            ) {
+                                Text(lbl, color = if (sel) Color.White else TextSec,
+                                    fontSize = 14.sp,
+                                    fontWeight = if (sel) FontWeight.SemiBold else FontWeight.Normal,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.padding(vertical = 9.dp))
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(20.dp))
+
+                    if (register) {
+                        OutlinedTextField(
+                            value = name, onValueChange = { name = it },
+                            label = { Text("الاسم") },
+                            leadingIcon = { Icon(Icons.Default.Person, null, tint = TextDim, modifier = Modifier.size(20.dp)) },
+                            singleLine = true,
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = Accent, unfocusedBorderColor = Border,
+                                focusedTextColor = TextPri, unfocusedTextColor = TextPri,
+                                focusedLabelColor = Accent, unfocusedLabelColor = TextSec,
+                                cursorColor = Accent,
+                                unfocusedContainerColor = Surface3, focusedContainerColor = Surface3
+                            ),
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Spacer(Modifier.height(12.dp))
+                    }
+
+                    OutlinedTextField(
+                        value = email, onValueChange = { email = it },
+                        label = { Text("البريد الإلكتروني") },
+                        leadingIcon = { Icon(Icons.Default.Email, null, tint = TextDim, modifier = Modifier.size(20.dp)) },
+                        singleLine = true,
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                            keyboardType = androidx.compose.ui.text.input.KeyboardType.Email),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Accent, unfocusedBorderColor = Border,
+                            focusedTextColor = TextPri, unfocusedTextColor = TextPri,
+                            focusedLabelColor = Accent, unfocusedLabelColor = TextSec,
+                            cursorColor = Accent,
+                            unfocusedContainerColor = Surface3, focusedContainerColor = Surface3
+                        ),
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(12.dp))
+
+                    OutlinedTextField(
+                        value = password, onValueChange = { password = it },
+                        label = { Text("كلمة المرور") },
+                        leadingIcon = { Icon(Icons.Default.Lock, null, tint = TextDim, modifier = Modifier.size(20.dp)) },
+                        trailingIcon = {
+                            IconButton({ showPass = !showPass }) {
+                                Icon(
+                                    if (showPass) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                    null, tint = TextDim, modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        },
+                        singleLine = true,
+                        visualTransformation = if (showPass) androidx.compose.ui.text.input.VisualTransformation.None
+                            else androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Accent, unfocusedBorderColor = Border,
+                            focusedTextColor = TextPri, unfocusedTextColor = TextPri,
+                            focusedLabelColor = Accent, unfocusedLabelColor = TextSec,
+                            cursorColor = Accent,
+                            unfocusedContainerColor = Surface3, focusedContainerColor = Surface3
+                        ),
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    AnimatedVisibility(visible = error.isNotBlank()) {
+                        Surface(
+                            color = Red.copy(.12f),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
+                        ) {
+                            Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Icon(Icons.Default.ErrorOutline, null, tint = Red, modifier = Modifier.size(16.dp))
+                                Text(error, color = Red, fontSize = 12.sp, lineHeight = 17.sp)
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(20.dp))
+
+                    Button(
+                        enabled = !busy && email.isNotBlank() && password.length >= 6 && (!register || name.isNotBlank()),
+                        onClick = {
+                            busy = true; error = ""
+                            scope.launch {
+                                val result = if (register)
+                                    AuthStore.signUp(context, email.trim(), password, name.trim())
+                                else
+                                    AuthStore.signIn(context, email.trim(), password)
+                                busy = false
+                                result.onSuccess { onSignedIn() }
+                                    .onFailure { error = it.message ?: "تعذر إكمال العملية" }
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth().height(52.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Accent),
+                        shape = RoundedCornerShape(14.dp)
+                    ) {
+                        if (busy) CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                        else Text(
+                            if (register) "إنشاء الحساب" else "دخول",
+                            color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 15.sp
+                        )
+                    }
+
+                    Spacer(Modifier.height(16.dp))
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        HorizontalDivider(Modifier.weight(1f), color = Border)
+                        Text("  أو  ", color = TextDim, fontSize = 12.sp)
+                        HorizontalDivider(Modifier.weight(1f), color = Border)
+                    }
+                    Spacer(Modifier.height(16.dp))
+
+                    OutlinedButton(
+                        onClick = onGoogle,
+                        modifier = Modifier.fillMaxWidth().height(52.dp),
+                        shape = RoundedCornerShape(14.dp),
+                        border = BorderStroke(1.dp, Border),
+                        colors = ButtonDefaults.outlinedButtonColors(containerColor = Surface3)
+                    ) {
+                        Box(Modifier.size(24.dp).clip(CircleShape).background(Color(0xFF4285F4)), Alignment.Center) {
+                            Text("G", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        }
+                        Spacer(Modifier.width(10.dp))
+                        Text("المتابعة مع Google", color = TextPri, fontWeight = FontWeight.Medium, fontSize = 14.sp, fontFamily = Font)
+                    }
                 }
-            }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Accent)) {
-                if (busy) CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp), strokeWidth = 2.dp) else Text(if (register) "إنشاء الحساب" else "دخول", color = Color.White)
             }
-            OutlinedButton(onClick = onGoogle, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(10.dp), border = BorderStroke(1.dp, Border)) {
-                Text("G", color = Color(0xFF4285F4), fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                Spacer(Modifier.width(8.dp))
-                Text("المتابعة باستخدام Google", color = TextPri, fontFamily = Font)
-            }
-            TextButton(onClick = { register = !register; error = "" }) { Text(if (register) "لديك حساب؟ سجل الدخول" else "ليس لديك حساب؟ أنشئ حسابًا", color = AccentLt) }
+
+            Spacer(Modifier.height(24.dp))
+            Text("باستخدام التطبيق توافق على شروط الاستخدام", color = TextDim, fontSize = 11.sp)
+            Spacer(Modifier.height(32.dp))
         }
     }
 }
@@ -203,6 +368,7 @@ private fun App(oauthTick: Int = 0) {
     val appScope = rememberCoroutineScope()
     var authReady by remember { mutableStateOf(false) }
     var signedIn by remember { mutableStateOf(false) }
+    var showGoogleDialog by remember { mutableStateOf(false) }
     LaunchedEffect(oauthTick) {
         val uri = (context as? MainActivity)?.intent?.data
         if (uri?.scheme == "mangalore") {
@@ -219,9 +385,16 @@ private fun App(oauthTick: Int = 0) {
         return
     }
     if (!signedIn) {
-        AuthScreen(onSignedIn = { signedIn = true }, onGoogle = {
-            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(AuthStore.googleAuthUrl())))
-        })
+        AuthScreen(onSignedIn = { signedIn = true }, onGoogle = { showGoogleDialog = true })
+        if (showGoogleDialog) {
+            GoogleAuthDialog(
+                onSigned = { uri ->
+                    showGoogleDialog = false
+                    appScope.launch { AuthStore.completeGoogle(context, uri).onSuccess { signedIn = true } }
+                },
+                onDismiss = { showGoogleDialog = false }
+            )
+        }
         return
     }
     var accent  by remember { mutableStateOf(Accent) }
@@ -510,6 +683,67 @@ private fun CfProbe(onChallenge: () -> Unit, onSolved: (String) -> Unit) {
 }
 
 // ══════════════════════════════════════════════════════════════
+// GOOGLE AUTH IN-APP DIALOG
+// ══════════════════════════════════════════════════════════════
+@SuppressLint("SetJavaScriptEnabled")
+@Composable
+private fun GoogleAuthDialog(onSigned: (Uri) -> Unit, onDismiss: () -> Unit) {
+    var loading by remember { mutableStateOf(true) }
+    androidx.compose.ui.window.Dialog(
+        onDismiss,
+        androidx.compose.ui.window.DialogProperties(
+            usePlatformDefaultWidth = false, dismissOnBackPress = true, dismissOnClickOutside = false
+        )
+    ) {
+        Surface(Modifier.fillMaxSize(), color = Bg) {
+            Column(Modifier.fillMaxSize()) {
+                // Header
+                Surface(color = Surface2, shadowElevation = 4.dp) {
+                    Row(Modifier.fillMaxWidth().statusBarsPadding()
+                        .padding(horizontal = 12.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(38.dp).clip(CircleShape).background(Color(0xFF4285F4).copy(.15f)),
+                            Alignment.Center) {
+                            Text("G", color = Color(0xFF4285F4), fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("تسجيل الدخول بـ Google", color = TextPri, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                            Text("أكمل تسجيل الدخول في النافذة أدناه", color = TextSec, fontSize = 12.sp)
+                        }
+                        if (loading) CircularProgressIndicator(Modifier.size(18.dp), color = Accent, strokeWidth = 2.dp)
+                        Spacer(Modifier.width(8.dp))
+                        TextButton(onDismiss) { Text("إلغاء", color = TextSec, fontSize = 13.sp) }
+                    }
+                }
+                AndroidView(
+                    factory = { ctx ->
+                        WebView(ctx).apply {
+                            settings.javaScriptEnabled = true
+                            settings.domStorageEnabled = true
+                            settings.databaseEnabled = true
+                            CookieManager.getInstance().setAcceptCookie(true)
+                            CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
+                            webViewClient = object : WebViewClient() {
+                                override fun onPageStarted(v: WebView?, u: String?, f: android.graphics.Bitmap?) { loading = true }
+                                override fun onPageFinished(v: WebView?, url: String?) { loading = false }
+                                override fun shouldOverrideUrlLoading(v: WebView?, r: WebResourceRequest?): Boolean {
+                                    val uri = r?.url ?: return false
+                                    if (uri.scheme == "mangalore") { onSigned(uri); return true }
+                                    return false
+                                }
+                            }
+                            loadUrl(AuthStore.googleAuthUrl())
+                        }
+                    },
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+        }
+    }
+}
+
+// ══════════════════════════════════════════════════════════════
 // HOME SCREEN
 // ══════════════════════════════════════════════════════════════
 @Composable
@@ -541,7 +775,7 @@ private fun HomeScreen(accent: Color, onMenu: () -> Unit, onSearch: () -> Unit, 
     val feature = list.firstOrNull()
 
     Box(Modifier.fillMaxSize()) {
-        LazyColumn(Modifier.fillMaxSize().padding(top = 76.dp)) {
+        LazyColumn(Modifier.fillMaxSize().statusBarsPadding().padding(top = 72.dp)) {
 
         // ── Shimmer or Error ──────────────────────────────────
         if (loading) {
@@ -826,9 +1060,14 @@ private fun HomeScreen(accent: Color, onMenu: () -> Unit, onSearch: () -> Unit, 
                 verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onMenu) { Icon(Icons.Default.Menu, null, tint = TextPri) }
                 Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                    Image(painterResource(R.drawable.logo), "Mangalore",
-                        modifier = Modifier.size(width = 112.dp, height = 52.dp),
-                        contentScale = ContentScale.Fit)
+                    Text(
+                        "Mangalore",
+                        color = TextPri,
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = Font,
+                        letterSpacing = (-0.5).sp
+                    )
                 }
                 IconButton(onSearch) { Icon(Icons.Default.Search, null, tint = TextPri) }
             }
@@ -1086,6 +1325,7 @@ private fun DetailScreen(
     var newestFirst by remember { mutableStateOf(true) }
     var showDownloadDialog by remember { mutableStateOf(false) }
     var selectedChapters by remember { mutableStateOf(setOf<Int>()) }
+    var selectionMode by remember { mutableStateOf(false) }
     var commentText by remember { mutableStateOf("") }
     var comments by remember { mutableStateOf(listOf<String>()) }
     LaunchedEffect(d.url) {
@@ -1261,46 +1501,163 @@ private fun DetailScreen(
                 }
             }
         } else if (tab == 2) {
+            // Comment input
             item {
-                Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("شارك رأيك بهذا العمل", color = TextPri, fontSize = 16.sp, fontWeight = FontWeight.Bold, fontFamily = Font)
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Surface(color = Surface2, shape = RoundedCornerShape(18.dp),
+                    border = BorderStroke(1.dp, Border),
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp).fillMaxWidth()) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            // User avatar
+                            Box(Modifier.size(36.dp).clip(CircleShape)
+                                .background(accent.copy(.2f)).border(1.dp, accent.copy(.35f), CircleShape),
+                                Alignment.Center) {
+                                Text(AuthStore.displayName.firstOrNull()?.uppercase() ?: "أ",
+                                    color = accent, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                            }
+                            Text(AuthStore.displayName.ifBlank { "قارئ مانجالور" },
+                                color = TextSec, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                        }
                         OutlinedTextField(
                             value = commentText, onValueChange = { commentText = it },
-                            placeholder = { Text("اكتب تعليقك...", fontFamily = Font) },
-                            modifier = Modifier.weight(1f), maxLines = 3,
-                            colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = accent, unfocusedBorderColor = Border, focusedTextColor = TextPri, unfocusedTextColor = TextPri, focusedLabelColor = accent, unfocusedLabelColor = TextSec)
+                            placeholder = { Text("شارك رأيك بهذا العمل...", fontFamily = Font, color = TextDim) },
+                            modifier = Modifier.fillMaxWidth(), maxLines = 4,
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = accent, unfocusedBorderColor = Border,
+                                focusedTextColor = TextPri, unfocusedTextColor = TextPri,
+                                unfocusedContainerColor = Surface3, focusedContainerColor = Surface3
+                            ),
+                            shape = RoundedCornerShape(12.dp)
                         )
-                        IconButton(enabled = commentText.isNotBlank(), onClick = {
-                            val value = commentText.trim()
-                            if (value.isNotEmpty()) {
-                                comments = comments + value
-                                commentText = ""
-                                context.getSharedPreferences("mangalore_comments", Context.MODE_PRIVATE).edit().putString(d.url, comments.joinToString("\n")).apply()
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                            Button(
+                                enabled = commentText.isNotBlank(),
+                                onClick = {
+                                    val value = commentText.trim()
+                                    if (value.isNotEmpty()) {
+                                        comments = comments + value
+                                        commentText = ""
+                                        context.getSharedPreferences("mangalore_comments", Context.MODE_PRIVATE)
+                                            .edit().putString(d.url, comments.joinToString("\n")).apply()
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = accent),
+                                shape = RoundedCornerShape(10.dp),
+                                contentPadding = PaddingValues(horizontal = 18.dp, vertical = 8.dp)
+                            ) {
+                                Icon(Icons.Default.Send, null, modifier = Modifier.size(15.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("نشر", fontSize = 13.sp)
                             }
-                        }) { Icon(Icons.Default.Send, "إضافة تعليق", tint = if (commentText.isBlank()) TextDim else accent) }
+                        }
                     }
                 }
             }
-            items(comments) { comment ->
-                Surface(color = Surface2, shape = RoundedCornerShape(12.dp), modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp)) {
-                    Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Icon(Icons.Default.Person, null, tint = accent, modifier = Modifier.size(22.dp))
-                        Text(comment, color = TextSec, fontSize = 13.sp, lineHeight = 21.sp, fontFamily = Font)
+
+            // Empty state
+            if (comments.isEmpty()) {
+                item {
+                    Box(Modifier.fillMaxWidth().padding(vertical = 32.dp), Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Box(Modifier.size(56.dp).clip(CircleShape).background(Surface3), Alignment.Center) {
+                                Icon(Icons.Default.ModeComment, null, tint = TextDim.copy(.5f),
+                                    modifier = Modifier.size(28.dp))
+                            }
+                            Spacer(Modifier.height(12.dp))
+                            Text("لا توجد تعليقات بعد", color = TextSec, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                            Spacer(Modifier.height(4.dp))
+                            Text("كن أول من يشارك رأيه", color = TextDim, fontSize = 12.sp)
+                        }
                     }
                 }
             }
-            if (comments.isEmpty()) item { Text("لا توجد تعليقات بعد — كن أول من يكتب رأيه", color = TextDim, fontSize = 13.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(30.dp), fontFamily = Font) }
+
+            // Comments list
+            itemsIndexed(comments.asReversed()) { idx, comment ->
+                val commentAccent = Palette[(idx * 3 + 7) % Palette.size]
+                val initial = AuthStore.displayName.firstOrNull()?.uppercase() ?: "أ"
+                Surface(
+                    color = Surface2, shape = RoundedCornerShape(16.dp),
+                    border = BorderStroke(.5.dp, Border),
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 5.dp)
+                ) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        // Comment header
+                        Row(verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Box(Modifier.size(34.dp).clip(CircleShape)
+                                .background(commentAccent.copy(.2f))
+                                .border(.5.dp, commentAccent.copy(.4f), CircleShape),
+                                Alignment.Center) {
+                                Text(initial, color = commentAccent, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                            }
+                            Column(Modifier.weight(1f)) {
+                                Text(AuthStore.displayName.ifBlank { "قارئ مانجالور" },
+                                    color = TextPri, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                Text("قارئ مانجالور", color = TextDim, fontSize = 10.sp)
+                            }
+                            IconButton(
+                                onClick = {
+                                    comments = comments.filterNot { it == comment }
+                                    context.getSharedPreferences("mangalore_comments", Context.MODE_PRIVATE)
+                                        .edit().putString(d.url, comments.joinToString("\n")).apply()
+                                },
+                                modifier = Modifier.size(28.dp)
+                            ) {
+                                Icon(Icons.Default.Close, null, tint = TextDim.copy(.6f),
+                                    modifier = Modifier.size(14.dp))
+                            }
+                        }
+                        // Comment body
+                        Text(comment, color = TextPri, fontSize = 14.sp, lineHeight = 22.sp)
+                    }
+                }
+            }
         } else {
             item {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 6.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(selected = newestFirst, onClick = { newestFirst = true },
-                        label = { Text("الأحدث", fontFamily = Font) }, leadingIcon = { Icon(Icons.Default.ArrowDownward, null) })
-                    FilterChip(selected = !newestFirst, onClick = { newestFirst = false },
-                        label = { Text("الأقدم", fontFamily = Font) }, leadingIcon = { Icon(Icons.Default.ArrowUpward, null) })
-                    TextButton(onClick = { selectedChapters = if (selectedChapters.size == d.chapters.size) emptySet() else d.chapters.indices.toSet() }) {
-                        Text(if (selectedChapters.size == d.chapters.size) "إلغاء الكل" else "تحديد الكل", color = accent, fontFamily = Font, fontSize = 12.sp)
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    FilterChip(
+                        selected = newestFirst, onClick = { newestFirst = true },
+                        label = { Text("الأحدث", fontFamily = Font, fontSize = 12.sp) },
+                        leadingIcon = { Icon(Icons.Default.ArrowDownward, null, modifier = Modifier.size(14.dp)) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = accent.copy(.18f), selectedLabelColor = accent,
+                            selectedLeadingIconColor = accent)
+                    )
+                    FilterChip(
+                        selected = !newestFirst, onClick = { newestFirst = false },
+                        label = { Text("الأقدم", fontFamily = Font, fontSize = 12.sp) },
+                        leadingIcon = { Icon(Icons.Default.ArrowUpward, null, modifier = Modifier.size(14.dp)) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = accent.copy(.18f), selectedLabelColor = accent,
+                            selectedLeadingIconColor = accent)
+                    )
+                    Spacer(Modifier.weight(1f))
+                    if (selectionMode) {
+                        if (selectedChapters.isNotEmpty()) {
+                            TextButton(onClick = {
+                                LocalDownloads.enqueue(context, d, selectedChapters.sorted())
+                                selectedChapters = emptySet(); selectionMode = false
+                            }) {
+                                Icon(Icons.Default.Download, null, tint = accent, modifier = Modifier.size(15.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("تنزيل (${selectedChapters.size})", color = accent, fontSize = 12.sp)
+                            }
+                        }
+                        TextButton(onClick = {
+                            selectedChapters = if (selectedChapters.size == d.chapters.size) emptySet() else d.chapters.indices.toSet()
+                        }) {
+                            Text(if (selectedChapters.size == d.chapters.size) "إلغاء الكل" else "تحديد الكل", color = accent, fontSize = 12.sp)
+                        }
+                        IconButton(onClick = { selectionMode = false; selectedChapters = emptySet() },
+                            modifier = Modifier.size(32.dp)) {
+                            Icon(Icons.Default.Close, null, tint = TextSec, modifier = Modifier.size(18.dp))
+                        }
                     }
                 }
             }
@@ -1319,11 +1676,33 @@ private fun DetailScreen(
                     progress != null -> accent
                     else -> TextDim
                 }
+                val isSelected = selectedChapters.contains(originalIndex)
                 Surface(
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp)
-                        .fillMaxWidth().clickable { onChapter(ch, originalIndex) },
-                    color = Surface2, shape = RoundedCornerShape(14.dp),
-                    border = BorderStroke(1.dp, Border)
+                    modifier = Modifier
+                        .padding(horizontal = 14.dp, vertical = 4.dp)
+                        .fillMaxWidth()
+                        .pointerInput(selectionMode) {
+                            detectTapGestures(
+                                onLongPress = {
+                                    selectionMode = true
+                                    selectedChapters = selectedChapters + originalIndex
+                                },
+                                onTap = {
+                                    if (selectionMode) {
+                                        selectedChapters = if (isSelected)
+                                            selectedChapters - originalIndex
+                                        else
+                                            selectedChapters + originalIndex
+                                        if (selectedChapters.isEmpty()) selectionMode = false
+                                    } else {
+                                        onChapter(ch, originalIndex)
+                                    }
+                                }
+                            )
+                        },
+                    color = if (isSelected && selectionMode) accent.copy(.10f) else Surface2,
+                    shape = RoundedCornerShape(14.dp),
+                    border = BorderStroke(1.dp, if (isSelected && selectionMode) accent.copy(.5f) else Border)
                 ) {
                     Row(Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically,
@@ -1340,13 +1719,30 @@ private fun DetailScreen(
                         Column(Modifier.weight(1f)) {
                             Text(ch.title.ifEmpty { "الفصل ${ch.number}" }, color = TextPri, fontSize = 14.sp,
                                 maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text(progressLabel, color = progressColor, fontSize = 11.sp, fontWeight = if (progress != null) FontWeight.Medium else FontWeight.Normal)
+                            Text(progressLabel, color = progressColor, fontSize = 11.sp,
+                                fontWeight = if (progress != null) FontWeight.Medium else FontWeight.Normal)
                         }
-                        Checkbox(checked = selectedChapters.contains(originalIndex), onCheckedChange = { checked ->
-                            selectedChapters = if (checked) selectedChapters + originalIndex else selectedChapters - originalIndex
-                        }, colors = CheckboxDefaults.colors(checkedColor = accent, uncheckedColor = TextDim))
-                        Icon(if (progress?.completed == true) Icons.Default.CheckCircle else Icons.Default.PlayArrow,
-                            null, tint = progressColor, modifier = Modifier.size(18.dp))
+                        if (selectionMode) {
+                            Checkbox(
+                                checked = isSelected,
+                                onCheckedChange = { checked ->
+                                    selectedChapters = if (checked) selectedChapters + originalIndex else selectedChapters - originalIndex
+                                    if (selectedChapters.isEmpty()) selectionMode = false
+                                },
+                                colors = CheckboxDefaults.colors(checkedColor = accent, uncheckedColor = TextDim)
+                            )
+                        } else {
+                            IconButton(
+                                onClick = { LocalDownloads.enqueue(context, d, listOf(originalIndex)) },
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(Icons.Default.Download, null, tint = TextDim, modifier = Modifier.size(18.dp))
+                            }
+                        }
+                        Icon(
+                            if (progress?.completed == true) Icons.Default.CheckCircle else Icons.Default.PlayArrow,
+                            null, tint = progressColor, modifier = Modifier.size(18.dp)
+                        )
                     }
                 }
             }
@@ -1734,44 +2130,166 @@ private fun DownloadsScreen(accent: Color, onBack: () -> Unit) {
 
 @Composable
 private fun ProfileScreen(accent: Color, onBack: () -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var stats by remember { mutableStateOf(Triple(0, 0, 0)) }
+    var editNameDialog by remember { mutableStateOf(false) }
+    var nameInput by remember { mutableStateOf("") }
+    var savingName by remember { mutableStateOf(false) }
+    var displayName by remember { mutableStateOf(AuthStore.displayName.ifBlank { "قارئ مانجالور" }) }
+
     LaunchedEffect(Unit) { runCatching { CloudStore.stats() }.onSuccess { stats = it } }
+
     Column(Modifier.fillMaxSize()) {
         TopBar("الملف الشخصي", accent, onBack)
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(18.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)) {
+
+            // Avatar + name row
             item {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                    Box(Modifier.size(82.dp).clip(RoundedCornerShape(22.dp)).background(accent), Alignment.Center) { Icon(Icons.Default.Person, null, tint = Color.White, modifier = Modifier.size(46.dp)) }
-                    Column(Modifier.weight(1f)) {
-                        Text(AuthStore.displayName.ifBlank { "قارئ مانجالور" }, color = TextPri, fontSize = 21.sp, fontWeight = FontWeight.Bold)
-                        Text("عضو في مانجالور", color = TextSec, fontSize = 12.sp)
+                Surface(color = Surface2, shape = RoundedCornerShape(20.dp),
+                    border = BorderStroke(1.dp, Border)) {
+                    Row(Modifier.fillMaxWidth().padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                        // Avatar circle with initial
+                        Box(
+                            Modifier.size(70.dp).clip(RoundedCornerShape(18.dp))
+                                .background(Brush.linearGradient(listOf(accent.copy(.35f), accent.copy(.1f))))
+                                .border(1.5.dp, accent.copy(.4f), RoundedCornerShape(18.dp)),
+                            Alignment.Center
+                        ) {
+                            Text(
+                                displayName.firstOrNull()?.uppercase() ?: "M",
+                                color = accent, fontSize = 32.sp, fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Column(Modifier.weight(1f)) {
+                            Text(displayName, color = TextPri, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                            Text("عضو في مانجالور", color = TextSec, fontSize = 12.sp)
+                        }
+                        // Edit name button
+                        IconButton(onClick = { nameInput = AuthStore.displayName; editNameDialog = true },
+                            modifier = Modifier.size(38.dp)) {
+                            Surface(color = accent.copy(.15f), shape = RoundedCornerShape(10.dp)) {
+                                Icon(Icons.Default.Edit, null, tint = accent,
+                                    modifier = Modifier.padding(7.dp).size(16.dp))
+                            }
+                        }
                     }
                 }
             }
-            item { Text("إحصائيات القراءة", color = TextSec, fontSize = 14.sp) }
+
+            // Stats section
             item {
-                Surface(color = Surface2, shape = RoundedCornerShape(20.dp), border = BorderStroke(1.dp, Border)) {
+                Text("إحصائيات القراءة", color = TextSec, fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold, letterSpacing = .5.sp)
+            }
+            item {
+                Surface(color = Surface2, shape = RoundedCornerShape(20.dp),
+                    border = BorderStroke(1.dp, Border)) {
                     Column {
-                        Row(Modifier.fillMaxWidth().padding(18.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Column { Text("الفصول التي تمت مشاهدتها", color = TextSec, fontSize = 13.sp); Text("${stats.first}", color = TextPri, fontSize = 38.sp, fontWeight = FontWeight.Bold) }
-                            Icon(Icons.Default.BarChart, null, tint = accent, modifier = Modifier.size(48.dp))
+                        Row(Modifier.fillMaxWidth().padding(18.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically) {
+                            Column {
+                                Text("الفصول المكتملة", color = TextSec, fontSize = 13.sp)
+                                Text("${stats.first}", color = TextPri, fontSize = 38.sp,
+                                    fontWeight = FontWeight.Bold)
+                            }
+                            Box(Modifier.size(52.dp).clip(RoundedCornerShape(16.dp))
+                                .background(accent.copy(.15f)), Alignment.Center) {
+                                Icon(Icons.Default.BarChart, null, tint = accent,
+                                    modifier = Modifier.size(28.dp))
+                            }
                         }
                         HorizontalDivider(color = Border)
                         Row(Modifier.fillMaxWidth()) {
                             ProfileStat("جاري القراءة", stats.second.toString(), Modifier.weight(1f))
-                            ProfileStat("المفضلة", stats.third.toString(), Modifier.weight(1f))
+                            VerticalDivider(Modifier.height(64.dp), color = Border)
+                            ProfileStat("المكتبة", stats.third.toString(), Modifier.weight(1f))
                         }
                         HorizontalDivider(color = Border)
                         Row(Modifier.fillMaxWidth()) {
                             ProfileStat("قراءة لاحقًا", "0", Modifier.weight(1f))
+                            VerticalDivider(Modifier.height(64.dp), color = Border)
                             ProfileStat("المانجا", stats.third.toString(), Modifier.weight(1f))
                         }
                     }
                 }
             }
-            item { Text("آخر القراءات", color = TextSec, fontSize = 14.sp) }
-            item { Text("ستظهر آخر قراءاتك هنا بعد بدء القراءة", color = TextDim, fontSize = 13.sp) }
+
+            item {
+                Text("آخر القراءات", color = TextSec, fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold, letterSpacing = .5.sp)
+            }
+            item {
+                Surface(color = Surface2, shape = RoundedCornerShape(14.dp),
+                    border = BorderStroke(1.dp, Border)) {
+                    Box(Modifier.fillMaxWidth().padding(24.dp), Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(Icons.Default.MenuBook, null, tint = TextDim.copy(.5f),
+                                modifier = Modifier.size(36.dp))
+                            Spacer(Modifier.height(10.dp))
+                            Text("ستظهر آخر قراءاتك هنا", color = TextDim, fontSize = 13.sp)
+                        }
+                    }
+                }
+            }
         }
+    }
+
+    // Edit name dialog
+    if (editNameDialog) {
+        AlertDialog(
+            onDismissRequest = { if (!savingName) editNameDialog = false },
+            containerColor = Surface2,
+            titleContentColor = TextPri,
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Icon(Icons.Default.Edit, null, tint = accent, modifier = Modifier.size(20.dp))
+                    Text("تعديل الاسم", fontFamily = Font, fontWeight = FontWeight.Bold)
+                }
+            },
+            text = {
+                OutlinedTextField(
+                    value = nameInput, onValueChange = { nameInput = it },
+                    label = { Text("الاسم الجديد") },
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = accent, unfocusedBorderColor = Border,
+                        focusedTextColor = TextPri, unfocusedTextColor = TextPri,
+                        focusedLabelColor = accent, unfocusedLabelColor = TextSec,
+                        unfocusedContainerColor = Surface3, focusedContainerColor = Surface3
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                Button(
+                    enabled = !savingName && nameInput.isNotBlank(),
+                    onClick = {
+                        savingName = true
+                        scope.launch {
+                            AuthStore.updateDisplayName(context, nameInput.trim())
+                            displayName = nameInput.trim()
+                            savingName = false
+                            editNameDialog = false
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = accent),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    if (savingName) CircularProgressIndicator(Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
+                    else Text("حفظ", color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton({ if (!savingName) editNameDialog = false }) { Text("إلغاء", color = TextSec) }
+            }
+        )
     }
 }
 
@@ -1832,9 +2350,15 @@ private fun SettingsScreen(accent:Color, amoled:Boolean, onAmoled:(Boolean)->Uni
         item {
             Box(Modifier.fillMaxWidth().padding(vertical = 36.dp), Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Image(painterResource(R.drawable.logo), "Mangalore",
-                        modifier = Modifier.size(84.dp), contentScale = ContentScale.Fit)
+                    Box(Modifier.size(60.dp).clip(RoundedCornerShape(16.dp))
+                        .background(Brush.linearGradient(listOf(accent.copy(.3f), accent.copy(.08f))))
+                        .border(1.dp, accent.copy(.35f), RoundedCornerShape(16.dp)), Alignment.Center) {
+                        Text("M", color = accent, fontSize = 28.sp, fontWeight = FontWeight.Bold, fontFamily = Font)
+                    }
                     Spacer(Modifier.height(10.dp))
+                    Text("Mangalore", color = TextSec, fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
+                        fontFamily = Font, letterSpacing = (-0.3).sp)
+                    Spacer(Modifier.height(4.dp))
                     Text("v2.0.0", color=TextDim, fontSize=12.sp)
                 }
             }
