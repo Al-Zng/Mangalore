@@ -447,8 +447,7 @@ private fun App(oauthTick: Int = 0) {
     BackHandler(stack.size > 1 || drawer) { if (drawer) drawer = false else pop() }
 
     MaterialTheme(
-        colorScheme = darkColorScheme(background = appBg, surface = Surface2, primary = accent),
-        typography = Typography(defaultFontFamily = Font)
+        colorScheme = darkColorScheme(background = appBg, surface = Surface2, primary = accent)
     ) {
         CompositionLocalProvider(
             LocalLayoutDirection provides LayoutDirection.Rtl,
