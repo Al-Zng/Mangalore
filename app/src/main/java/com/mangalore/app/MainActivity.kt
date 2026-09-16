@@ -10,6 +10,7 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.os.Bundle
+import java.io.File
 import android.webkit.CookieManager
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
@@ -189,6 +190,7 @@ private sealed class Dest {
     object Library : Dest()
     object History : Dest()
     object Downloads : Dest()
+    object CustomLists : Dest()
     object Profile : Dest()
     object Settings : Dest()
     data class Detail(val item: MangaItem) : Dest()
@@ -555,6 +557,7 @@ private fun App(oauthTick: Int = 0) {
                         }
                         is Dest.History -> HistoryScreen(accent, hist, ::pop, { p -> push(Dest.Reader(p.manga.chapters[p.chapterIndex].url, "الفصل ${p.manga.chapters[p.chapterIndex].number}", p.manga, p.chapterIndex, p.page)) }) { hist = emptyList() }
                         is Dest.Downloads -> DownloadsScreen(accent, ::pop)
+                        is Dest.CustomLists -> CustomListsScreen(accent, ::pop) { push(Dest.Detail(it)) }
                         is Dest.Profile -> ProfileScreen(accent, ::pop)
                         is Dest.Settings -> SettingsScreen(
                             accent, amoled,
@@ -623,6 +626,7 @@ private fun App(oauthTick: Int = 0) {
                             "library"  -> { if (cur !is Dest.Library)  push(Dest.Library) else drawer = false }
                             "history"  -> { if (cur !is Dest.History)  push(Dest.History) else drawer = false }
                             "downloads" -> { if (cur !is Dest.Downloads) push(Dest.Downloads) else drawer = false }
+                            "custom" -> { if (cur !is Dest.CustomLists) push(Dest.CustomLists) else drawer = false }
                             "profile"  -> { if (cur !is Dest.Profile)  push(Dest.Profile) else drawer = false }
                             "settings" -> { if (cur !is Dest.Settings) push(Dest.Settings) else drawer = false }
                         }
@@ -1429,6 +1433,8 @@ private fun DetailScreen(
     var showDownloadDialog by remember { mutableStateOf(false) }
     var selectedChapters by remember { mutableStateOf(setOf<Int>()) }
     var selectionMode by remember { mutableStateOf(false) }
+    var showMoreMenu by remember { mutableStateOf(false) }
+    var showListPicker by remember { mutableStateOf(false) }
     var commentText by remember { mutableStateOf("") }
     var comments by remember { mutableStateOf(listOf<String>()) }
     LaunchedEffect(d.url) {
@@ -1459,6 +1465,19 @@ private fun DetailScreen(
 
                 // Back button
                 BackBtn(onBack, Modifier.align(Alignment.TopStart).statusBarsPadding().padding(4.dp))
+                Box(Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(4.dp)) {
+                    IconButton({ showMoreMenu = true }) { Icon(Icons.Default.MoreVert, "المزيد", tint = Color.White) }
+                    DropdownMenu(expanded = showMoreMenu, onDismissRequest = { showMoreMenu = false }) {
+                        DropdownMenuItem(text = { Text(if (inLib) "إزالة من المكتبة" else "حفظ في المكتبة") }, onClick = {
+                            if (inLib) { lib.removeAll { it.url == d.url }; cloudScope.launch { runCatching { CloudStore.removeLibrary(d.url) } } }
+                            else { lib.add(0, asItem); cloudScope.launch { runCatching { CloudStore.addLibrary(asItem) } } }
+                            showMoreMenu = false
+                        }, leadingIcon = { Icon(if (inLib) Icons.Default.BookmarkRemove else Icons.Default.BookmarkAdd, null) })
+                        DropdownMenuItem(text = { Text("تحديد فصول للتنزيل") }, onClick = { selectionMode = true; showMoreMenu = false }, leadingIcon = { Icon(Icons.Default.Checklist, null) })
+                        DropdownMenuItem(text = { Text("تنزيل فصول") }, onClick = { showDownloadDialog = true; showMoreMenu = false }, leadingIcon = { Icon(Icons.Default.Download, null) })
+                        DropdownMenuItem(text = { Text("إضافة إلى قائمة") }, onClick = { showListPicker = true; showMoreMenu = false }, leadingIcon = { Icon(Icons.Default.PlaylistAdd, null) })
+                    }
+                }
 
                 // Cover + info at bottom
                 Row(Modifier.align(Alignment.BottomStart).fillMaxWidth()
@@ -1519,33 +1538,6 @@ private fun DetailScreen(
                                 Text("آخر فصل", fontSize = 13.sp, color = TextPri, fontFamily = Font)
                             }
                         }
-                    }
-                    OutlinedButton(
-                        {
-                            if (inLib) {
-                                lib.removeAll { it.url == d.url }
-                                cloudScope.launch { runCatching { CloudStore.removeLibrary(d.url) } }
-                            } else {
-                                lib.add(0, asItem)
-                                cloudScope.launch { runCatching { CloudStore.addLibrary(asItem) } }
-                            }
-                        },
-                        border = BorderStroke(1.dp, if (inLib) accent else Border),
-                        shape  = RoundedCornerShape(10.dp),
-                        modifier = Modifier.defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)) {
-                        Icon(if (inLib) Icons.Default.Bookmark else Icons.Outlined.BookmarkBorder,
-                            null, tint = if (inLib) accent else TextSec, modifier = Modifier.size(16.dp))
-                    }
-                    Button(
-                        onClick = { showDownloadDialog = true },
-                        shape = ButtonShape,
-                        colors = ButtonDefaults.buttonColors(containerColor = accent),
-                        contentPadding = PaddingValues(horizontal = 13.dp, vertical = 9.dp),
-                        modifier = Modifier.defaultMinSize(minWidth = 86.dp, minHeight = 48.dp)
-                    ) {
-                        Icon(Icons.Default.Download, "تنزيل الفصول", tint = Color.White, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text(if (selectedChapters.isEmpty()) "تنزيل" else "تنزيل المحدد (${selectedChapters.size})", color = Color.White, fontFamily = Font, fontSize = 12.sp)
                     }
                 }
             }
@@ -1856,6 +1848,16 @@ private fun DetailScreen(
         }
         item { Spacer(Modifier.height(48.dp)) }
     }
+    if (showListPicker) {
+        val names = CustomListsStore.names(context)
+        AlertDialog(onDismissRequest = { showListPicker = false }, containerColor = Surface2,
+            title = { Text("إضافة إلى قائمة", color = TextPri, fontFamily = Font, fontWeight = FontWeight.Bold) },
+            text = {
+                if (names.isEmpty()) Text("لا توجد قوائم مخصصة. أنشئ قائمة من قسم قوائمي أولاً.", color = TextSec, fontFamily = Font)
+                else Column { names.forEach { name -> TextButton({ CustomListsStore.add(context, name, asItem); showListPicker = false }, modifier = Modifier.fillMaxWidth()) { Text(name, color = TextPri, fontFamily = Font) } } }
+            },
+            confirmButton = { TextButton({ showListPicker = false }) { Text("إغلاق", color = TextSec, fontFamily = Font) } })
+    }
     if (showDownloadDialog) {
         var from by remember { mutableStateOf("1") }
         var to by remember { mutableStateOf(d.chapters.size.toString()) }
@@ -1996,7 +1998,7 @@ private fun ReaderScreen(
                 blocks.forEachIndexed { position, (index, images) ->
                     item(key = "chapter-header-$index") { Box(Modifier.fillMaxWidth().background(Brush.horizontalGradient(listOf(accent.copy(.22f), accent.copy(.06f), Color.Transparent))).padding(horizontal = 16.dp, vertical = 14.dp)) { Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) { Box(Modifier.width(CoverWidthCh).height(CoverHeightCh).clip(RoundedCornerShape(8.dp))) { Img(manga.coverUrl, Modifier.fillMaxSize()); Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(.82f)))).padding(bottom = 3.dp, top = 8.dp), Alignment.Center) { Text(manga.chapters[index].number, color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold) } }; Column { Text("الفصل ${manga.chapters[index].number}", color = accent, fontSize = 15.sp, fontWeight = FontWeight.Bold); if (displayedChapterTitle.isNotEmpty()) Text(displayedChapterTitle, color = TextSec, fontSize = 12.sp) } } } }
                     itemsIndexed(images, key = { i, url -> "$index-$i-$url" }) { _, url ->
-                        SubcomposeAsyncImage(model = ImageRequest.Builder(LocalContext.current).data(url).addHeader("Referer", "https://mangalik.net/").addHeader("User-Agent", "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/124.0.0.0").apply { if (CookieStore.has()) addHeader("Cookie", CookieStore.cfCookies) }
+                        SubcomposeAsyncImage(model = ImageRequest.Builder(LocalContext.current).data(if (url.startsWith("/")) File(url) else url).addHeader("Referer", "https://mangalik.net/").addHeader("User-Agent", "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/124.0.0.0").apply { if (CookieStore.has()) addHeader("Cookie", CookieStore.cfCookies) }
                             .listener(onError = { _, result -> Log.e("MangaloreImages", "Image failed url=$url", result.throwable) })
                             .crossfade(false).build(), contentDescription = null, contentScale = ContentScale.FillWidth, modifier = Modifier.fillMaxWidth().graphicsLayer {
                                 val zoom = if (zoomImages) 1.15f else 1f
@@ -2617,6 +2619,7 @@ private fun Drawer(accent:Color, cur:Dest, onClose:()->Unit, onNav:(String)->Uni
                     item { DItem("مكتبتي",       Icons.Default.LibraryBooks,  "library",  cur is Dest.Library,  onNav) }
                     item { DItem("سجل القراءة",  Icons.Default.History,       "history",  cur is Dest.History,  onNav) }
                     item { DItem("التنزيلات",    Icons.Default.Download,      "downloads", cur is Dest.Downloads, onNav) }
+                    item { DItem("قوائمي",        Icons.Default.PlaylistPlay,   "custom",    cur is Dest.CustomLists, onNav) }
                     item { DItem("الملف الشخصي", Icons.Default.Person,        "profile",  cur is Dest.Profile,  onNav) }
                     item { Spacer(Modifier.height(8.dp)); HorizontalDivider(color=Border) }
                     item { DSec("أخرى", accent) }
@@ -2798,4 +2801,45 @@ private fun SpringCard(onClick:()->Unit, content:@Composable ()->Unit) {
     val transition = rememberInfiniteTransition(label = "placeholder-shimmer")
     val x by transition.animateFloat(-1f, 1.5f, infiniteRepeatable(tween(900, easing = LinearEasing)), label = "placeholder-offset")
     return Brush.linearGradient(listOf(Surface3.copy(.45f), Color(0xFF252530), Surface3.copy(.8f)), Offset(x * 900f, 0f), Offset((x + .5f) * 1100f, 180f))
+}
+
+@Composable
+private fun CustomListsScreen(accent: Color, onBack: () -> Unit, onPick: (MangaItem) -> Unit) {
+    val context = LocalContext.current
+    var names by remember { mutableStateOf(CustomListsStore.names(context)) }
+    var selected by remember { mutableStateOf<String?>(null) }
+    var items by remember { mutableStateOf(emptyList<MangaItem>()) }
+    var creating by remember { mutableStateOf(false) }
+    var nameInput by remember { mutableStateOf("") }
+    fun refresh() { names = CustomListsStore.names(context); selected?.let { items = CustomListsStore.get(context, it) } }
+    Column(Modifier.fillMaxSize()) {
+        TopBar("قوائمي", accent, onBack, action = { IconButton({ creating = true; nameInput = "" }) { Icon(Icons.Default.Add, "إنشاء قائمة", tint = accent) } })
+        if (names.isEmpty()) EmptyState(Icons.Default.PlaylistPlay, "لا توجد قوائم", "أنشئ قائمة من زر الإضافة")
+        else LazyColumn(contentPadding = PaddingValues(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            items(names) { name ->
+                val count = CustomListsStore.get(context, name).size
+                Surface(color = if (selected == name) accent.copy(.15f) else Surface2, shape = InputShape, border = BorderStroke(1.dp, if (selected == name) accent else Border)) {
+                    Row(Modifier.fillMaxWidth().clickable { selected = name; items = CustomListsStore.get(context, name) }.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.PlaylistPlay, null, tint = accent, modifier = Modifier.size(24.dp)); Spacer(Modifier.width(10.dp)); Column(Modifier.weight(1f)) { Text(name, color = TextPri, fontWeight = FontWeight.Bold); Text("$count مانجا", color = TextSec, fontSize = 12.sp) }
+                        IconButton({ CustomListsStore.delete(context, name); if (selected == name) { selected = null; items = emptyList() }; refresh() }) { Icon(Icons.Default.DeleteOutline, "حذف", tint = Red) }
+                    }
+                }
+            }
+            if (selected != null) {
+                item { Text("محتويات القائمة", color = TextSec, fontSize = 13.sp, modifier = Modifier.padding(top = 10.dp)) }
+                items(items, key = { it.url }) { manga ->
+                    Row(Modifier.fillMaxWidth().clickable { onPick(manga) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(46.dp, 64.dp).clip(RoundedCornerShape(8.dp))) { Img(manga.coverUrl, Modifier.fillMaxSize()) }
+                        Text(manga.title, color = TextPri, modifier = Modifier.weight(1f).padding(horizontal = 10.dp), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        IconButton({ CustomListsStore.remove(context, selected!!, manga.url); refresh() }) { Icon(Icons.Default.Close, "إزالة", tint = TextDim) }
+                    }
+                }
+            }
+        }
+    }
+    if (creating) AlertDialog(onDismissRequest = { creating = false }, containerColor = Surface2,
+        title = { Text("قائمة جديدة", color = TextPri, fontFamily = Font) },
+        text = { OutlinedTextField(nameInput, { nameInput = it }, label = { Text("اسم القائمة") }, singleLine = true, shape = InputShape) },
+        confirmButton = { TextButton({ if (CustomListsStore.create(context, nameInput)) { creating = false; refresh() } }) { Text("إنشاء", color = accent) } },
+        dismissButton = { TextButton({ creating = false }) { Text("إلغاء", color = TextSec) } })
 }
