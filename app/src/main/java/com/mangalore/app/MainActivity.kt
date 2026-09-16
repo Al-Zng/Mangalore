@@ -127,6 +127,39 @@ private fun BrandMark(modifier: Modifier = Modifier) {
 
 private fun commentsKey(url: String) = "comments_${url.hashCode().toUInt().toString(16)}"
 
+private fun formatRelativeDate(raw: String): String {
+    val value = raw.trim()
+    if (value.isBlank()) return ""
+    val months = mapOf(
+        "يناير" to "January", "فبراير" to "February", "مارس" to "March", "أبريل" to "April",
+        "مايو" to "May", "يونيو" to "June", "يوليو" to "July", "أغسطس" to "August",
+        "سبتمبر" to "September", "أكتوبر" to "October", "نوفمبر" to "November", "ديسمبر" to "December"
+    )
+    val normalized = months.entries.fold(value) { text, (ar, en) -> text.replace(ar, en) }
+    val epoch = normalized.toLongOrNull()?.let { if (it < 10_000_000_000L) it * 1000L else it }
+    val parsed = epoch ?: runCatching {
+        val formats = listOf("MMMM d, yyyy", "MMM d, yyyy", "yyyy-MM-dd", "dd/MM/yyyy")
+        formats.firstNotNullOfOrNull { pattern ->
+            runCatching { java.text.SimpleDateFormat(pattern, java.util.Locale.ENGLISH).parse(normalized)?.time }.getOrNull()
+        }
+    }.getOrNull() ?: return value
+    val diff = System.currentTimeMillis() - parsed
+    if (diff < 0) return value
+    val minutes = diff / 60_000L
+    val hours = minutes / 60L
+    val days = hours / 24L
+    return when {
+        minutes < 60 -> "قبل ساعة"
+        hours == 1L -> "قبل ساعة"
+        hours == 2L -> "قبل ساعتين"
+        hours in 3..10 -> "قبل $hours ساعات"
+        days == 1L -> "قبل يوم"
+        days == 2L -> "قبل يومين"
+        days in 3..7 -> "قبل $days أيام"
+        else -> java.text.SimpleDateFormat("d MMMM yyyy", java.util.Locale("ar")).format(java.util.Date(parsed))
+    }
+}
+
 private fun readSavedComments(context: Context, url: String): List<String> {
     val prefs = context.getSharedPreferences("mangalore_comments", Context.MODE_PRIVATE)
     val encoded = prefs.getString(commentsKey(url), null)
@@ -1113,7 +1146,7 @@ private fun HomeScreen(accent: Color, onMenu: () -> Unit, onSearch: () -> Unit, 
                             Text(m.title, color = TextPri, fontSize = 11.sp, maxLines = 2,
                                 overflow = TextOverflow.Ellipsis, lineHeight = 15.sp)
                             if (m.chapterDate.isNotEmpty()) {
-                                Text(m.chapterDate, color = TextDim, fontSize = 9.sp)
+                                Text(formatRelativeDate(m.chapterDate), color = TextDim, fontSize = 9.sp)
                             }
                         }
                     }
@@ -1733,15 +1766,15 @@ private fun DetailScreen(
                     }
                 }
             }
-            val orderedChapters = if (newestFirst) d.chapters.asReversed() else d.chapters
+            val orderedChapters = if (newestFirst) d.chapters else d.chapters.asReversed()
             itemsIndexed(orderedChapters) { displayIndex, ch ->
-                val originalIndex = if (newestFirst) d.chapters.lastIndex - displayIndex else displayIndex
+                val originalIndex = if (newestFirst) displayIndex else d.chapters.lastIndex - displayIndex
                 val progress = history.firstOrNull { it.manga.url == d.url && it.chapterIndex == originalIndex }
                 val progressLabel = when {
                     progress?.completed == true -> "تمت المشاهدة"
                     progress != null -> "أكمل من الصفحة ${progress.page}"
                     ch.date.isNotEmpty() -> ch.date
-                    else -> "غير مشاهد"
+                    else -> formatRelativeDate(ch.date).ifBlank { "التاريخ غير متوفر" }
                 }
                 val progressColor = when {
                     progress?.completed == true -> Green

@@ -69,7 +69,7 @@ object Scraper {
 
     private data class AniMetadata(
         val author: String = "", val artist: String = "", val status: String = "",
-        val year: String = "", val format: String = "", val description: String = "", val genres: List<String> = emptyList()
+        val year: String = "", val format: String = "", val updatedAt: String = "", val description: String = "", val genres: List<String> = emptyList()
     )
 
     private fun cleanMeta(v: String): String {
@@ -197,7 +197,7 @@ object Scraper {
     private fun fetchAniList(title: String): AniMetadata? = runCatching {
         val query = """
             query(${"$"}search: String) { Page(perPage: 1) { media(search: ${"$"}search, type: MANGA) {
-              format countryOfOrigin description(asHtml: false) status startDate { year } genres
+              format countryOfOrigin updatedAt description(asHtml: false) status startDate { year } genres
               staff(perPage: 15) { edges { role node { name { full } } } }
             } } }
         """.trimIndent()
@@ -223,7 +223,7 @@ object Scraper {
                 AniMetadata(author, artist, when (media.optString("status")) {
                     "FINISHED" -> "مكتملة"; "RELEASING" -> "مستمرة"; "HIATUS" -> "متوقفة مؤقتاً"; "CANCELLED" -> "ملغاة"; else -> ""
                 }, media.optJSONObject("startDate")?.optInt("year", 0)?.takeIf { it > 0 }?.toString().orEmpty(),
-                    translateFormat(media.optString("format"), media.optString("countryOfOrigin")), media.optString("description").trim(),
+                    translateFormat(media.optString("format"), media.optString("countryOfOrigin")), media.optLong("updatedAt", 0).toString(), media.optString("description").trim(),
                     media.optJSONArray("genres")?.let { a -> (0 until a.length()).map { translateGenre(a.optString(it)) } } ?: emptyList())
             }
     }.getOrNull()
@@ -338,7 +338,7 @@ object Scraper {
             val chUrl   = a.attr("href").trim()
             val chTitle = cleanBranding(a.text().trim())
             val date    = li.selectFirst(".chapter-release-date i, .chapter-release-date")
-                ?.text()?.trim() ?: ""
+                ?.text()?.trim().orEmpty().ifBlank { ani?.updatedAt.orEmpty() }
             val num  = chTitle.replace(Regex("[^0-9.]"), "").trim()
             ChapterItem(
                 number = num.ifEmpty { "?" },
