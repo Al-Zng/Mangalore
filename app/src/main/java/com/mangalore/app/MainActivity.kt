@@ -400,10 +400,16 @@ private fun App(oauthTick: Int = 0) {
     var authReady by remember { mutableStateOf(false) }
     var signedIn by remember { mutableStateOf(false) }
     var showGoogleDialog by remember { mutableStateOf(false) }
+    var authNotice by remember { mutableStateOf("") }
     LaunchedEffect(oauthTick) {
         val uri = (context as? MainActivity)?.intent?.data
         if (uri?.scheme == "mangalore") {
-            AuthStore.completeGoogle(context, uri).onSuccess { signedIn = true }
+            AuthStore.completeAuthCallback(context, uri).onSuccess {
+                signedIn = true
+                if (uri.fragment?.contains("type=signup") == true || uri.getQueryParameter("type") == "signup") {
+                    authNotice = "تم التحقق من البريد الإلكتروني، وتم تسجيل الدخول تلقائياً"
+                }
+            }
         }
     }
     LaunchedEffect(Unit) {
@@ -457,6 +463,12 @@ private fun App(oauthTick: Int = 0) {
     var showCf  by remember { mutableStateOf(false) }
     var readerRefresh by remember { mutableIntStateOf(0) }
     var toast   by remember { mutableStateOf("") }
+    LaunchedEffect(authNotice) {
+        if (authNotice.isNotBlank()) {
+            toast = authNotice
+            authNotice = ""
+        }
+    }
 
     fun push(d: Dest) { stack = stack + d; drawer = false }
     fun replaceTop(d: Dest) { stack = if (stack.size > 1) stack.dropLast(1) + d else listOf(d) }

@@ -58,14 +58,14 @@ object AuthStore {
             true
         }.getOrElse { hasSession() }
     }
-    suspend fun completeGoogle(context: Context, uri: Uri): Result<Unit> = runCatching {
+    suspend fun completeAuthCallback(context: Context, uri: Uri): Result<Unit> = runCatching {
         val fragment = uri.fragment.orEmpty().removePrefix("#")
         val params = fragment.split("&").mapNotNull { part ->
             val bits = part.split("=", limit = 2)
             if (bits.size == 2) java.net.URLDecoder.decode(bits[0], "UTF-8") to java.net.URLDecoder.decode(bits[1], "UTF-8") else null
         }.toMap()
         val token = params["access_token"].orEmpty()
-        if (token.isBlank()) error("لم يكتمل تسجيل Google")
+        if (token.isBlank()) error("لم يكتمل التحقق من البريد الإلكتروني")
         accessToken = token
         val refresh = params["refresh_token"].orEmpty()
         val user = request("/auth/v1/user", "GET", null, token)
@@ -78,6 +78,9 @@ object AuthStore {
             .putString(USER_ID, userId).putString(NAME, displayName).apply()
         fetchProfile(context)
     }
+
+    suspend fun completeGoogle(context: Context, uri: Uri): Result<Unit> =
+        completeAuthCallback(context, uri)
 
     private fun save(context: Context, obj: JSONObject) {
         val previousRefresh = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(REFRESH, "").orEmpty()
@@ -110,7 +113,10 @@ object AuthStore {
 
     suspend fun signUp(context: Context, email: String, password: String, name: String): Result<Unit> = runCatching {
         displayName = name
-        val obj = request("/auth/v1/signup", "POST", JSONObject().put("email", email).put("password", password).put("data", JSONObject().put("display_name", name)))
+        val redirect = java.net.URLEncoder.encode("mangalore://auth/callback", "UTF-8")
+        val obj = request("/auth/v1/signup?redirect_to=$redirect", "POST", JSONObject()
+            .put("email", email).put("password", password)
+            .put("data", JSONObject().put("display_name", name)))
         if (obj.optString("access_token").isBlank()) throw IllegalStateException("تم إنشاء الحساب. افحص بريدك لتأكيد الحساب ثم سجل الدخول")
         save(context, obj)
         fetchProfile(context)
