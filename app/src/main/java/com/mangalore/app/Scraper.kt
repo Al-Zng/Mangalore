@@ -77,6 +77,11 @@ object Scraper {
         return if (v.trim().lowercase() in bad) "" else v.trim()
     }
 
+    private fun cleanBranding(value: String): String = value
+        .replace(Regex("(?i)mangalik|mangalek|mangalik"), "Mangalore")
+        .replace("مانجا ليك", "مانجالور")
+        .replace("مانجاليك", "مانجالور")
+
     private fun normalizeStatus(value: String): String {
         val v = value.trim().lowercase()
         return when {
@@ -331,7 +336,7 @@ object Scraper {
         val chapters = doc.select("li.wp-manga-chapter").mapNotNull { li ->
             val a    = li.selectFirst("a") ?: return@mapNotNull null
             val chUrl   = a.attr("href").trim()
-            val chTitle = a.text().trim()
+            val chTitle = cleanBranding(a.text().trim())
             val date    = li.selectFirst(".chapter-release-date i, .chapter-release-date")
                 ?.text()?.trim() ?: ""
             val num  = chTitle.replace(Regex("[^0-9.]"), "").trim()
@@ -339,17 +344,17 @@ object Scraper {
                 number = num.ifEmpty { "?" },
                 title  = chTitle,
                 url    = chUrl,
-                date   = date
+                date   = cleanBranding(date)
             )
         }
 
         MangaDetail(
-            title = title, slug = slug,
+            title = cleanBranding(title), slug = slug,
             coverUrl = coverThumb, coverFull = coverFull,
-            url = url, genres = genres, status = status,
-            author = author, artist = artist,
-            description = desc, rating = rating,
-            releaseYear = year, origin = origin,
+            url = url, genres = genres.map(::cleanBranding), status = cleanBranding(status),
+            author = cleanBranding(author), artist = cleanBranding(artist),
+            description = cleanBranding(desc), rating = cleanBranding(rating),
+            releaseYear = cleanBranding(year), origin = cleanBranding(origin),
             chapters = chapters
         )
     }
@@ -406,14 +411,14 @@ object Scraper {
 
             val slug = url.trimEnd('/').substringAfterLast('/')
             items += MangaItem(
-                id = "$i-$slug", title = title, slug = slug,
+                id = "$i-$slug", title = cleanBranding(title), slug = slug,
                 coverUrl = fullCover.ifEmpty { thumb },
                 coverFull = fullCover,
                 url = url,
-                latestChapter = latest,
-                prevChapter = prev,
-                chapterDate = date,
-                score = score
+                latestChapter = cleanBranding(latest),
+                prevChapter = cleanBranding(prev),
+                chapterDate = cleanBranding(date),
+                score = cleanBranding(score)
             )
         }
         return items.distinctBy { it.url }
@@ -433,7 +438,7 @@ object Scraper {
             val full  = fullSizeUrl(thumb)
             val slug  = url.trimEnd('/').substringAfterLast('/')
             items += MangaItem(
-                id = "$i-$slug", title = title, slug = slug,
+                id = "$i-$slug", title = cleanBranding(title), slug = slug,
                 coverUrl = full.ifEmpty { thumb }, coverFull = full, url = url
             )
         }
