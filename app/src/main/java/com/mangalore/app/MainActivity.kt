@@ -16,6 +16,8 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
@@ -54,6 +56,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.snapshotFlow
+import org.json.JSONArray
 
 // ══════════════════════════════════════════════════════════════
 // TOKENS
@@ -66,18 +69,18 @@ private val Border   = Color(0xFF2A2A32)
 private val TextPri  = Color(0xFFF0F0F3)
 private val TextSec  = Color(0xFF9494A0)
 private val TextDim  = Color(0xFF4E4E58)
-private val Accent   = Color(0xFF5A7DB5)
-private val AccentLt = Color(0xFF7FA2D4)
+private val Accent   = Color(0xFFB88A5A)
+private val AccentLt = Color(0xFFD1AA78)
 private val Gold     = Color(0xFFFFC44D)
 private val Red      = Color(0xFFE05050)
 private val Green    = Color(0xFF4CAF82)
 
 private val Palette = listOf(
-    Color(0xFF5A7DB5), Color(0xFF8B5CB5), Color(0xFFB55C8B), Color(0xFFB55C5C),
-    Color(0xFFB58B5C), Color(0xFF8BB55C), Color(0xFF5CB58B), Color(0xFF5C8BB5),
-    Color(0xFF6B7FBF), Color(0xFFBF6B7F), Color(0xFF7FBF6B), Color(0xFF6BBFBF),
-    Color(0xFFBF9F6B), Color(0xFF9F6BBF), Color(0xFFBF6B9F), Color(0xFF6BBF9F),
-    Color(0xFF9FBF6B), Color(0xFFBF8B6B),
+    Color(0xFFB88A5A), Color(0xFF9B7653), Color(0xFF8E6B58), Color(0xFF7A6655),
+    Color(0xFF6E7B73), Color(0xFF708090), Color(0xFF7B7065), Color(0xFFA58B72),
+    Color(0xFF8B7765), Color(0xFF6F7C78), Color(0xFF927B65), Color(0xFF7D8580),
+    Color(0xFFB09A7A), Color(0xFF8A8178), Color(0xFF9A8670), Color(0xFF65736E),
+    Color(0xFFA48C76), Color(0xFF7F6D5D),
 )
 
 // Standard manga cover sizes (2:3 ratio)
@@ -99,6 +102,35 @@ private val Font = FontFamily(
     androidx.compose.ui.text.font.Font(R.font.readex_pro_semibold, FontWeight.SemiBold),
     androidx.compose.ui.text.font.Font(R.font.readex_pro_bold,     FontWeight.Bold),
 )
+
+@Composable
+private fun BrandMark(modifier: Modifier = Modifier) {
+    Image(
+        painter = painterResource(R.drawable.logo),
+        contentDescription = "شعار مانجالور",
+        contentScale = ContentScale.Fit,
+        modifier = modifier
+    )
+}
+
+private fun commentsKey(url: String) = "comments_${url.hashCode().toUInt().toString(16)}"
+
+private fun readSavedComments(context: Context, url: String): List<String> {
+    val prefs = context.getSharedPreferences("mangalore_comments", Context.MODE_PRIVATE)
+    val encoded = prefs.getString(commentsKey(url), null)
+    if (!encoded.isNullOrBlank()) runCatching {
+        val array = JSONArray(encoded)
+        return (0 until array.length()).map { array.optString(it) }.filter { it.isNotBlank() }
+    }
+    return prefs.getString(url, "").orEmpty().split("\n").filter { it.isNotBlank() }
+}
+
+private fun saveComments(context: Context, url: String, comments: List<String>) {
+    val array = JSONArray()
+    comments.forEach { array.put(it) }
+    context.getSharedPreferences("mangalore_comments", Context.MODE_PRIVATE)
+        .edit().putString(commentsKey(url), array.toString()).remove(url).apply()
+}
 
 // ══════════════════════════════════════════════════════════════
 // NAV
@@ -144,11 +176,7 @@ class MainActivity : ComponentActivity() {
 private fun SplashScreen() {
     Box(Modifier.fillMaxSize().background(Bg), Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Box(Modifier.size(84.dp).clip(RoundedCornerShape(24.dp))
-                .background(Brush.linearGradient(listOf(Accent.copy(.35f), Accent.copy(.1f))))
-                .border(1.5.dp, Accent.copy(.4f), RoundedCornerShape(24.dp)), Alignment.Center) {
-                Text("M", color = Accent, fontSize = 42.sp, fontWeight = FontWeight.Bold, fontFamily = Font)
-            }
+            BrandMark(Modifier.size(84.dp))
             Spacer(Modifier.height(16.dp))
             Text("Mangalore", color = TextPri, fontSize = 26.sp, fontWeight = FontWeight.Bold,
                 fontFamily = Font, letterSpacing = (-0.5).sp)
@@ -171,22 +199,13 @@ private fun AuthScreen(onSignedIn: () -> Unit, onGoogle: () -> Unit) {
     var showPass by remember { mutableStateOf(false) }
 
     Box(Modifier.fillMaxSize().background(Bg)) {
-        // Subtle gradient top accent
-        Box(Modifier.fillMaxWidth().height(280.dp).background(
-            Brush.verticalGradient(listOf(Accent.copy(.12f), Bg))))
-
         Column(
             Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Spacer(Modifier.height(72.dp))
 
-            // Brand logo
-            Box(Modifier.size(72.dp).clip(RoundedCornerShape(22.dp))
-                .background(Brush.linearGradient(listOf(Accent.copy(.3f), Accent.copy(.1f))))
-                .border(1.5.dp, Accent.copy(.4f), RoundedCornerShape(22.dp)), Alignment.Center) {
-                Text("M", color = Accent, fontSize = 36.sp, fontWeight = FontWeight.Bold, fontFamily = Font)
-            }
+            BrandMark(Modifier.size(92.dp))
             Spacer(Modifier.height(14.dp))
             Text("Mangalore", color = TextPri, fontSize = 28.sp, fontWeight = FontWeight.Bold,
                 fontFamily = Font, letterSpacing = (-0.5).sp)
@@ -427,7 +446,10 @@ private fun App(oauthTick: Int = 0) {
 
     BackHandler(stack.size > 1 || drawer) { if (drawer) drawer = false else pop() }
 
-    MaterialTheme(colorScheme = darkColorScheme(background = appBg, surface = Surface2, primary = accent)) {
+    MaterialTheme(
+        colorScheme = darkColorScheme(background = appBg, surface = Surface2, primary = accent),
+        typography = Typography(defaultFontFamily = Font)
+    ) {
         CompositionLocalProvider(
             LocalLayoutDirection provides LayoutDirection.Rtl,
             LocalTextStyle provides LocalTextStyle.current.copy(fontFamily = Font)
@@ -1329,9 +1351,7 @@ private fun DetailScreen(
     var commentText by remember { mutableStateOf("") }
     var comments by remember { mutableStateOf(listOf<String>()) }
     LaunchedEffect(d.url) {
-        val raw = context.getSharedPreferences("mangalore_comments", Context.MODE_PRIVATE)
-            .getString(d.url, "").orEmpty()
-        comments = raw.split("\n").filter { it.isNotBlank() }
+        comments = readSavedComments(context, d.url)
     }
     val inLib = lib.any { it.url == d.url }
     val asItem = MangaItem(d.slug, d.title, d.slug, d.coverUrl, d.coverFull, d.url)
@@ -1538,8 +1558,7 @@ private fun DetailScreen(
                                     if (value.isNotEmpty()) {
                                         comments = comments + value
                                         commentText = ""
-                                        context.getSharedPreferences("mangalore_comments", Context.MODE_PRIVATE)
-                                            .edit().putString(d.url, comments.joinToString("\n")).apply()
+                                        saveComments(context, d.url, comments)
                                     }
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = accent),
@@ -1600,8 +1619,7 @@ private fun DetailScreen(
                             IconButton(
                                 onClick = {
                                     comments = comments.filterNot { it == comment }
-                                    context.getSharedPreferences("mangalore_comments", Context.MODE_PRIVATE)
-                                        .edit().putString(d.url, comments.joinToString("\n")).apply()
+                                    saveComments(context, d.url, comments)
                                 },
                                 modifier = Modifier.size(28.dp)
                             ) {
@@ -2137,6 +2155,13 @@ private fun ProfileScreen(accent: Color, onBack: () -> Unit) {
     var nameInput by remember { mutableStateOf("") }
     var savingName by remember { mutableStateOf(false) }
     var displayName by remember { mutableStateOf(AuthStore.displayName.ifBlank { "قارئ مانجالور" }) }
+    var avatarUrl by remember { mutableStateOf(AuthStore.avatarUrl) }
+    val avatarPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        uri?.toString()?.let {
+            avatarUrl = it
+            AuthStore.updateAvatar(context, it)
+        }
+    }
 
     LaunchedEffect(Unit) { runCatching { CloudStore.stats() }.onSuccess { stats = it } }
 
@@ -2152,17 +2177,21 @@ private fun ProfileScreen(accent: Color, onBack: () -> Unit) {
                     Row(Modifier.fillMaxWidth().padding(16.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                        // Avatar circle with initial
                         Box(
                             Modifier.size(70.dp).clip(RoundedCornerShape(18.dp))
-                                .background(Brush.linearGradient(listOf(accent.copy(.35f), accent.copy(.1f))))
-                                .border(1.5.dp, accent.copy(.4f), RoundedCornerShape(18.dp)),
-                            Alignment.Center
+                                .background(Surface3).border(1.dp, Border, RoundedCornerShape(18.dp))
+                                .clickable { avatarPicker.launch("image/*") }, Alignment.Center
                         ) {
-                            Text(
-                                displayName.firstOrNull()?.uppercase() ?: "M",
-                                color = accent, fontSize = 32.sp, fontWeight = FontWeight.Bold
+                            if (avatarUrl.isNotBlank()) AsyncImage(
+                                model = avatarUrl, contentDescription = "صورة المستخدم",
+                                contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()
+                            ) else Text(
+                                displayName.firstOrNull()?.uppercase() ?: "م",
+                                color = accent, fontSize = 30.sp, fontWeight = FontWeight.Bold
                             )
+                            Box(Modifier.align(Alignment.BottomEnd).size(22.dp).background(Color.Black.copy(.55f), CircleShape), Alignment.Center) {
+                                Icon(Icons.Default.CameraAlt, null, tint = Color.White, modifier = Modifier.size(13.dp))
+                            }
                         }
                         Column(Modifier.weight(1f)) {
                             Text(displayName, color = TextPri, fontSize = 18.sp, fontWeight = FontWeight.Bold)
@@ -2273,10 +2302,12 @@ private fun ProfileScreen(accent: Color, onBack: () -> Unit) {
                     onClick = {
                         savingName = true
                         scope.launch {
-                            AuthStore.updateDisplayName(context, nameInput.trim())
-                            displayName = nameInput.trim()
+                            runCatching { AuthStore.updateDisplayName(context, nameInput.trim()) }
+                                .onSuccess {
+                                    displayName = nameInput.trim()
+                                    editNameDialog = false
+                                }
                             savingName = false
-                            editNameDialog = false
                         }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = accent),
@@ -2350,11 +2381,7 @@ private fun SettingsScreen(accent:Color, amoled:Boolean, onAmoled:(Boolean)->Uni
         item {
             Box(Modifier.fillMaxWidth().padding(vertical = 36.dp), Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Box(Modifier.size(60.dp).clip(RoundedCornerShape(16.dp))
-                        .background(Brush.linearGradient(listOf(accent.copy(.3f), accent.copy(.08f))))
-                        .border(1.dp, accent.copy(.35f), RoundedCornerShape(16.dp)), Alignment.Center) {
-                        Text("M", color = accent, fontSize = 28.sp, fontWeight = FontWeight.Bold, fontFamily = Font)
-                    }
+                    BrandMark(Modifier.size(72.dp))
                     Spacer(Modifier.height(10.dp))
                     Text("Mangalore", color = TextSec, fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
                         fontFamily = Font, letterSpacing = (-0.3).sp)
@@ -2408,7 +2435,10 @@ private fun Drawer(accent:Color, cur:Dest, onClose:()->Unit, onNav:(String)->Uni
                             horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             Box(Modifier.size(48.dp).clip(CircleShape).background(Surface3), Alignment.Center) {
-                                Icon(Icons.Default.Person, null, tint = TextSec, modifier = Modifier.size(28.dp))
+                                if (AuthStore.avatarUrl.isNotBlank()) AsyncImage(
+                                    model = AuthStore.avatarUrl, contentDescription = "صورة المستخدم",
+                                    contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()
+                                ) else Icon(Icons.Default.Person, null, tint = TextSec, modifier = Modifier.size(28.dp))
                             }
                             Column(Modifier.weight(1f)) {
                                 Text(AuthStore.displayName.ifBlank { "قارئ مانجالور" }, color = TextPri, fontSize = 15.sp, fontWeight = FontWeight.Bold)

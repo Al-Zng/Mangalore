@@ -18,6 +18,7 @@ object AuthStore {
     private const val REFRESH = "refresh_token"
     private const val USER_ID = "user_id"
     private const val NAME = "display_name"
+    private const val AVATAR = "avatar_url"
     private val jsonType = "application/json; charset=utf-8".toMediaType()
     private val http = OkHttpClient()
 
@@ -27,12 +28,15 @@ object AuthStore {
         private set
     var displayName: String = ""
         private set
+    var avatarUrl: String = ""
+        private set
 
     fun load(context: Context) {
         val p = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         accessToken = p.getString(ACCESS, "").orEmpty()
         userId = p.getString(USER_ID, "").orEmpty()
         displayName = p.getString(NAME, "").orEmpty()
+        avatarUrl = p.getString(AVATAR, "").orEmpty()
     }
 
     fun hasSession() = accessToken.isNotBlank() && userId.isNotBlank()
@@ -112,8 +116,13 @@ object AuthStore {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(NAME, displayName).apply()
     }
 
+    fun updateAvatar(context: Context, uri: String) {
+        avatarUrl = uri.trim()
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(AVATAR, avatarUrl).apply()
+    }
+
     fun signOut(context: Context) {
-        accessToken = ""; userId = ""; displayName = ""
+        accessToken = ""; userId = ""; displayName = ""; avatarUrl = ""
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().apply()
     }
 }
