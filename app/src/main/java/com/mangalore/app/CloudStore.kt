@@ -28,7 +28,7 @@ object CloudStore {
 
     suspend fun fetchLibrary(): List<MangaItem> {
         if (!AuthStore.hasSession()) return emptyList()
-        val arr = JSONArray(call("/rest/v1/library_items?select=manga_url,manga_slug,manga_title,cover_url&order=created_at.desc", "GET"))
+        val arr = JSONArray(call("/rest/v1/library_items?user_id=eq.${AuthStore.userId}&select=manga_url,manga_slug,manga_title,cover_url&order=created_at.desc", "GET"))
         return (0 until arr.length()).map { i ->
             val o = arr.getJSONObject(i)
             MangaItem(o.optString("manga_slug"), o.optString("manga_title"), o.optString("manga_slug"), o.optString("cover_url"), o.optString("cover_url"), o.optString("manga_url"))
@@ -42,7 +42,7 @@ object CloudStore {
     }
 
     suspend fun removeLibrary(url: String) {
-        if (AuthStore.hasSession()) call("/rest/v1/library_items?manga_url=eq.${java.net.URLEncoder.encode(url, "UTF-8")}", "DELETE")
+        if (AuthStore.hasSession()) call("/rest/v1/library_items?user_id=eq.${AuthStore.userId}&manga_url=eq.${java.net.URLEncoder.encode(url, "UTF-8")}", "DELETE")
     }
 
     suspend fun saveProgress(item: MangaItem, chapterUrl: String, chapterNumber: String, chapterIndex: Int, page: Int, total: Int, completed: Boolean) {
@@ -51,10 +51,22 @@ object CloudStore {
         call("/rest/v1/reading_progress?on_conflict=user_id,manga_url,chapter_url", "POST", o.toString())
     }
 
+    suspend fun fetchProgress(): List<ReadingProgress> {
+        if (!AuthStore.hasSession()) return emptyList()
+        val arr = JSONArray(call("/rest/v1/reading_progress?user_id=eq.${AuthStore.userId}&select=manga_url,manga_slug,manga_title,cover_url,chapter_url,chapter_number,page,total_pages,completed&order=updated_at.desc", "GET"))
+        return (0 until arr.length()).mapNotNull { i ->
+            val o = arr.optJSONObject(i) ?: return@mapNotNull null
+            val item = MangaItem(o.optString("manga_slug"), o.optString("manga_title"), o.optString("manga_slug"), o.optString("cover_url"), o.optString("cover_url"), o.optString("manga_url"))
+            val chapter = ChapterItem(o.optString("chapter_number"), "", o.optString("chapter_url"), "")
+            val manga = MangaDetail(item.title, item.slug, item.coverUrl, item.coverFull, item.url, emptyList(), "", "", "", "", "", "", listOf(chapter))
+            ReadingProgress(item, manga, 0, o.optInt("page", 1), o.optInt("total_pages", 0), o.optBoolean("completed"))
+        }
+    }
+
     suspend fun stats(): Triple<Int, Int, Int> {
         if (!AuthStore.hasSession()) return Triple(0, 0, 0)
-        val library = call("/rest/v1/library_items?select=id", "GET").let { JSONArray(it).length() }
-        val progress = call("/rest/v1/reading_progress?select=chapter_url,completed", "GET").let { JSONArray(it) }
+        val library = call("/rest/v1/library_items?user_id=eq.${AuthStore.userId}&select=id", "GET").let { JSONArray(it).length() }
+        val progress = call("/rest/v1/reading_progress?user_id=eq.${AuthStore.userId}&select=chapter_url,completed", "GET").let { JSONArray(it) }
         var completed = 0
         var inProgress = 0
         for (i in 0 until progress.length()) {

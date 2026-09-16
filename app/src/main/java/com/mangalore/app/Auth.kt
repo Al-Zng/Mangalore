@@ -41,6 +41,23 @@ object AuthStore {
 
     fun hasSession() = accessToken.isNotBlank() && userId.isNotBlank()
     fun googleAuthUrl(): String = BASE + "/auth/v1/authorize?provider=google&redirect_to=mangalore://auth/callback"
+
+    suspend fun restore(context: Context): Boolean {
+        load(context)
+        val refresh = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString(REFRESH, "").orEmpty()
+        if (accessToken.isBlank() || refresh.isBlank()) return hasSession()
+        return runCatching {
+            val obj = request(
+                "/auth/v1/token?grant_type=refresh_token",
+                "POST",
+                JSONObject().put("refresh_token", refresh)
+            )
+            save(context, obj)
+            fetchProfile(context)
+            true
+        }.getOrElse { hasSession() }
+    }
     suspend fun completeGoogle(context: Context, uri: Uri): Result<Unit> = runCatching {
         val fragment = uri.fragment.orEmpty().removePrefix("#")
         val params = fragment.split("&").mapNotNull { part ->
@@ -63,11 +80,12 @@ object AuthStore {
     }
 
     private fun save(context: Context, obj: JSONObject) {
+        val previousRefresh = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(REFRESH, "").orEmpty()
         accessToken = obj.optString("access_token")
-        userId = obj.optJSONObject("user")?.optString("id").orEmpty()
-        if (userId.isBlank()) userId = obj.optString("user_id")
+        val nextUserId = obj.optJSONObject("user")?.optString("id").orEmpty()
+        userId = nextUserId.ifBlank { obj.optString("user_id").ifBlank { userId } }
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-            .putString(ACCESS, accessToken).putString(REFRESH, obj.optString("refresh_token"))
+            .putString(ACCESS, accessToken).putString(REFRESH, obj.optString("refresh_token").ifBlank { previousRefresh })
             .putString(USER_ID, userId).putString(NAME, displayName).apply()
     }
 
@@ -99,9 +117,14 @@ object AuthStore {
     }
 
     private suspend fun fetchProfile(context: Context) {
-        val obj = request("/rest/v1/profiles?id=eq.$userId&select=display_name,username", "GET", null, accessToken)
-        displayName = obj.optString("display_name", displayName)
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(NAME, displayName).apply()
+        runCatching {
+            val user = request("/auth/v1/user", "GET", null, accessToken)
+            avatarUrl = user.optJSONObject("user_metadata")?.optString("avatar_url", avatarUrl).orEmpty()
+            val obj = request("/rest/v1/profiles?id=eq.$userId&select=display_name,username", "GET", null, accessToken)
+            displayName = obj.optString("display_name", displayName)
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                .putString(NAME, displayName).putString(AVATAR, avatarUrl).apply()
+        }
     }
 
     suspend fun updateDisplayName(context: Context, name: String) {
@@ -119,6 +142,32 @@ object AuthStore {
     fun updateAvatar(context: Context, uri: String) {
         avatarUrl = uri.trim()
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(AVATAR, avatarUrl).apply()
+    }
+
+    suspend fun syncAvatar(uri: String) {
+        if (!hasSession()) return
+        request("/auth/v1/user", "PUT", JSONObject().put("data", JSONObject().put("avatar_url", uri.trim())), accessToken)
+    }
+
+    suspend fun loadComments(url: String): List<String> {
+        if (!hasSession()) return emptyList()
+        val user = request("/auth/v1/user", "GET", null, accessToken)
+        val key = url.hashCode().toUInt().toString(16)
+        val array = user.optJSONObject("user_metadata")?.optJSONObject("mangalore_comments")?.optJSONArray(key)
+            ?: return emptyList()
+        return (0 until array.length()).map { array.optString(it) }.filter { it.isNotBlank() }
+    }
+
+    suspend fun syncComments(url: String, comments: List<String>) {
+        if (!hasSession()) return
+        val user = request("/auth/v1/user", "GET", null, accessToken)
+        val metadata = user.optJSONObject("user_metadata") ?: JSONObject()
+        val all = metadata.optJSONObject("mangalore_comments") ?: JSONObject()
+        val array = org.json.JSONArray()
+        comments.forEach { array.put(it) }
+        all.put(url.hashCode().toUInt().toString(16), array)
+        metadata.put("mangalore_comments", all)
+        request("/auth/v1/user", "PUT", JSONObject().put("data", metadata), accessToken)
     }
 
     fun signOut(context: Context) {

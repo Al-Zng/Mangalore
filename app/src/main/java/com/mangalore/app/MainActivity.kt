@@ -39,6 +39,7 @@ import androidx.compose.ui.*
 import androidx.compose.ui.draw.*
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.*
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -102,6 +103,8 @@ private val Font = FontFamily(
     androidx.compose.ui.text.font.Font(R.font.readex_pro_semibold, FontWeight.SemiBold),
     androidx.compose.ui.text.font.Font(R.font.readex_pro_bold,     FontWeight.Bold),
 )
+private val InputShape = RoundedCornerShape(24.dp)
+private val ButtonShape = RoundedCornerShape(20.dp)
 
 @Composable
 private fun BrandMark(modifier: Modifier = Modifier) {
@@ -228,7 +231,7 @@ private fun AuthScreen(onSignedIn: () -> Unit, onGoogle: () -> Unit) {
                             val sel = (i == 1) == register
                             Surface(
                                 color = if (sel) Accent else Color.Transparent,
-                                shape = RoundedCornerShape(10.dp),
+                                shape = ButtonShape,
                                 modifier = Modifier.weight(1f).clickable { register = i == 1; error = "" }
                             ) {
                                 Text(lbl, color = if (sel) Color.White else TextSec,
@@ -255,7 +258,7 @@ private fun AuthScreen(onSignedIn: () -> Unit, onGoogle: () -> Unit) {
                                 cursorColor = Accent,
                                 unfocusedContainerColor = Surface3, focusedContainerColor = Surface3
                             ),
-                            shape = RoundedCornerShape(14.dp),
+                            shape = InputShape,
                             modifier = Modifier.fillMaxWidth()
                         )
                         Spacer(Modifier.height(12.dp))
@@ -275,7 +278,7 @@ private fun AuthScreen(onSignedIn: () -> Unit, onGoogle: () -> Unit) {
                             cursorColor = Accent,
                             unfocusedContainerColor = Surface3, focusedContainerColor = Surface3
                         ),
-                        shape = RoundedCornerShape(14.dp),
+                        shape = InputShape,
                         modifier = Modifier.fillMaxWidth()
                     )
                     Spacer(Modifier.height(12.dp))
@@ -302,14 +305,14 @@ private fun AuthScreen(onSignedIn: () -> Unit, onGoogle: () -> Unit) {
                             cursorColor = Accent,
                             unfocusedContainerColor = Surface3, focusedContainerColor = Surface3
                         ),
-                        shape = RoundedCornerShape(14.dp),
+                        shape = InputShape,
                         modifier = Modifier.fillMaxWidth()
                     )
 
                     AnimatedVisibility(visible = error.isNotBlank()) {
                         Surface(
                             color = Red.copy(.12f),
-                            shape = RoundedCornerShape(12.dp),
+                            shape = InputShape,
                             modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
                         ) {
                             Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically,
@@ -338,7 +341,7 @@ private fun AuthScreen(onSignedIn: () -> Unit, onGoogle: () -> Unit) {
                         },
                         modifier = Modifier.fillMaxWidth().height(52.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Accent),
-                        shape = RoundedCornerShape(14.dp)
+                        shape = InputShape
                     ) {
                         if (busy) CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
                         else Text(
@@ -358,7 +361,7 @@ private fun AuthScreen(onSignedIn: () -> Unit, onGoogle: () -> Unit) {
                     OutlinedButton(
                         onClick = onGoogle,
                         modifier = Modifier.fillMaxWidth().height(52.dp),
-                        shape = RoundedCornerShape(14.dp),
+                        shape = InputShape,
                         border = BorderStroke(1.dp, Border),
                         colors = ButtonDefaults.outlinedButtonColors(containerColor = Surface3)
                     ) {
@@ -395,8 +398,7 @@ private fun App(oauthTick: Int = 0) {
         }
     }
     LaunchedEffect(Unit) {
-        AuthStore.load(context)
-        signedIn = AuthStore.hasSession()
+        signedIn = AuthStore.restore(context)
         authReady = true
     }
     if (!authReady) {
@@ -416,8 +418,9 @@ private fun App(oauthTick: Int = 0) {
         }
         return
     }
-    var accent  by remember { mutableStateOf(Accent) }
-    var amoled  by remember { mutableStateOf(false) }
+    val settingsPrefs = remember { context.getSharedPreferences("mangalore_settings", Context.MODE_PRIVATE) }
+    var accent  by remember { mutableStateOf(Color(settingsPrefs.getInt("accent", Accent.toArgb()))) }
+    var amoled  by remember { mutableStateOf(settingsPrefs.getBoolean("amoled", false)) }
     val appBg   = if (amoled) Black else Bg
 
     var stack   by remember { mutableStateOf(listOf<Dest>(Dest.Home)) }
@@ -432,6 +435,7 @@ private fun App(oauthTick: Int = 0) {
                 lib.clear()
                 lib.addAll(remote)
             }
+            runCatching { CloudStore.fetchProgress() }.onSuccess { remote -> hist = remote }
         }
     }
 
@@ -475,11 +479,19 @@ private fun App(oauthTick: Int = 0) {
                         is Dest.Search -> SearchScreen(accent, ::pop) { push(Dest.Detail(it)) }
                         is Dest.AllManga -> MangaListScreen("كل المانجا", accent, ::pop, { Scraper.fetchAll(it) }) { push(Dest.Detail(it)) }
                         is Dest.LatestManga -> MangaListScreen("أحدث المانجا", accent, ::pop, { Scraper.fetchLatest(it) }) { push(Dest.Detail(it)) }
-                        is Dest.Library -> LibraryScreen(accent, lib, ::pop, { push(Dest.Detail(it)) }) { lib.remove(it) }
+                        is Dest.Library -> LibraryScreen(accent, lib, ::pop, { push(Dest.Detail(it)) }) {
+                            lib.remove(it)
+                            appScope.launch { runCatching { CloudStore.removeLibrary(it.url) } }
+                        }
                         is Dest.History -> HistoryScreen(accent, hist, ::pop, { p -> push(Dest.Reader(p.manga.chapters[p.chapterIndex].url, "الفصل ${p.manga.chapters[p.chapterIndex].number}", p.manga, p.chapterIndex, p.page)) }) { hist = emptyList() }
                         is Dest.Downloads -> DownloadsScreen(accent, ::pop)
                         is Dest.Profile -> ProfileScreen(accent, ::pop)
-                        is Dest.Settings -> SettingsScreen(accent, amoled, { amoled = it }, { accent = it }, ::pop)
+                        is Dest.Settings -> SettingsScreen(
+                            accent, amoled,
+                            { amoled = it; settingsPrefs.edit().putBoolean("amoled", it).apply() },
+                            { accent = it; settingsPrefs.edit().putInt("accent", it.toArgb()).apply() },
+                            ::pop
+                        )
                         is Dest.Detail -> DetailLoadingScreen(d.item, accent, lib, ::pop) { replaceTop(Dest.DetailFull(it)) }
                         is Dest.DetailFull -> DetailScreen(
                             d.d, accent, lib, hist, ::pop,
@@ -557,7 +569,7 @@ private fun App(oauthTick: Int = 0) {
                 if (toast.isNotEmpty()) {
                     LaunchedEffect(toast) { kotlinx.coroutines.delay(3000L); toast = "" }
                     Box(Modifier.fillMaxSize().padding(bottom = 32.dp), Alignment.BottomCenter) {
-                        Surface(color = Green, shape = RoundedCornerShape(14.dp), shadowElevation = 8.dp) {
+                        Surface(color = Green, shape = InputShape, shadowElevation = 8.dp) {
                             Text(toast, color = Color.White, fontWeight = FontWeight.Medium,
                                 modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp))
                         }
@@ -1140,7 +1152,7 @@ private fun SearchScreen(accent: Color, onBack: () -> Unit, onPick: (MangaItem) 
                         focusedBorderColor = accent, unfocusedBorderColor = Border,
                         focusedTextColor = TextPri, unfocusedTextColor = TextPri, cursorColor = accent,
                         unfocusedContainerColor = Surface2, focusedContainerColor = Surface2),
-                    shape = RoundedCornerShape(14.dp),
+                    shape = InputShape,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 6.dp)
                 )
                 LazyRow(contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
@@ -1351,6 +1363,12 @@ private fun DetailScreen(
     var comments by remember { mutableStateOf(listOf<String>()) }
     LaunchedEffect(d.url) {
         comments = readSavedComments(context, d.url)
+        runCatching { AuthStore.loadComments(d.url) }.onSuccess { remote ->
+            if (remote.isNotEmpty()) {
+                comments = remote
+                saveComments(context, d.url, remote)
+            }
+        }
     }
     val inLib = lib.any { it.url == d.url }
     val asItem = MangaItem(d.slug, d.title, d.slug, d.coverUrl, d.coverFull, d.url)
@@ -1417,7 +1435,7 @@ private fun DetailScreen(
                             else onChapter(d.chapters.last(), d.chapters.lastIndex)
                         }, Modifier.weight(1f),
                             colors = ButtonDefaults.buttonColors(containerColor = accent),
-                            shape = RoundedCornerShape(10.dp)) {
+                            shape = ButtonShape) {
                             Icon(Icons.Default.PlayArrow, null, Modifier.size(16.dp))
                             Spacer(Modifier.width(4.dp))
                             Text(if (saved != null) "أكمل الفصل ${d.chapters[saved.chapterIndex].number} · ص${saved.page}" else "ابدأ القراءة", fontSize = 13.sp, fontFamily = Font)
@@ -1425,7 +1443,7 @@ private fun DetailScreen(
                         if (d.chapters.size > 1) {
                                 Button({ onChapter(d.chapters.first(), 0) }, Modifier.wrapContentWidth(),
                                 colors = ButtonDefaults.buttonColors(containerColor = Surface3),
-                                shape = RoundedCornerShape(10.dp)) {
+                                shape = ButtonShape) {
                                 Icon(Icons.Default.LastPage, null, Modifier.size(16.dp))
                                 Spacer(Modifier.width(4.dp))
                                 Text("آخر فصل", fontSize = 13.sp, color = TextPri, fontFamily = Font)
@@ -1450,7 +1468,7 @@ private fun DetailScreen(
                     }
                     Button(
                         onClick = { showDownloadDialog = true },
-                        shape = RoundedCornerShape(10.dp),
+                        shape = ButtonShape,
                         colors = ButtonDefaults.buttonColors(containerColor = accent),
                         contentPadding = PaddingValues(horizontal = 13.dp, vertical = 9.dp),
                         modifier = Modifier.wrapContentWidth()
@@ -1498,7 +1516,7 @@ private fun DetailScreen(
                 item { ExpandText(d.description, Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) }
             }
             item {
-                Surface(color = Surface2, shape = RoundedCornerShape(14.dp),
+                Surface(color = Surface2, shape = InputShape,
                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)) {
                     Column {
                         val na = "غير متوفر"
@@ -1547,7 +1565,7 @@ private fun DetailScreen(
                                 focusedTextColor = TextPri, unfocusedTextColor = TextPri,
                                 unfocusedContainerColor = Surface3, focusedContainerColor = Surface3
                             ),
-                            shape = RoundedCornerShape(12.dp)
+                            shape = InputShape
                         )
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                             Button(
@@ -1558,10 +1576,11 @@ private fun DetailScreen(
                                         comments = comments + value
                                         commentText = ""
                                         saveComments(context, d.url, comments)
+                                        cloudScope.launch { runCatching { AuthStore.syncComments(d.url, comments) } }
                                     }
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = accent),
-                                shape = RoundedCornerShape(10.dp),
+                                shape = ButtonShape,
                                 contentPadding = PaddingValues(horizontal = 18.dp, vertical = 8.dp)
                             ) {
                                 Icon(Icons.Default.Send, null, modifier = Modifier.size(15.dp))
@@ -1619,6 +1638,7 @@ private fun DetailScreen(
                                 onClick = {
                                     comments = comments.filterNot { it == comment }
                                     saveComments(context, d.url, comments)
+                                    cloudScope.launch { runCatching { AuthStore.syncComments(d.url, comments) } }
                                 },
                                 modifier = Modifier.size(28.dp)
                             ) {
@@ -1718,7 +1738,7 @@ private fun DetailScreen(
                             )
                         },
                     color = if (isSelected && selectionMode) accent.copy(.10f) else Surface2,
-                    shape = RoundedCornerShape(14.dp),
+                    shape = InputShape,
                     border = BorderStroke(1.dp, if (isSelected && selectionMode) accent.copy(.5f) else Border)
                 ) {
                     Row(Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
@@ -1976,7 +1996,7 @@ private fun ReaderScreen(
             Surface(color = Color.Black.copy(.92f)) { Column { Row(Modifier.statusBarsPadding().padding(horizontal = 4.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) { IconButton(onBack) { Icon(Icons.Default.ArrowForward, null, tint = Color.White) }; Column(Modifier.weight(1f).padding(horizontal = 4.dp)) { Text(manga.title, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis); Text(if (displayedChapterNum.isNotEmpty()) "الفصل $displayedChapterNum${if (displayedChapterTitle.isNotEmpty()) " • $displayedChapterTitle" else ""}" else chTitle, color = Color.White.copy(.7f), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }; if (showPageNumber && totalPages > 0) Text("$currentPage / $totalPages", color = Color.White, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 10.dp)); IconButton(onClick = { showReaderSettings = true }) { Icon(Icons.Default.Settings, "إعدادات القارئ", tint = Color.White) }; IconButton(onClick = { showChapterList = true }) { Icon(Icons.Default.List, "قائمة الفصول", tint = Color.White) } } } }
         }
         AnimatedVisibility(visible = bars && state == 1, modifier = Modifier.align(Alignment.BottomCenter), enter = fadeIn(tween(140)) + slideInVertically(tween(160)) { it }, exit = fadeOut(tween(100)) + slideOutVertically(tween(120)) { it }, label = "reader-bottom-bar") { Surface(color = Color.Black.copy(.92f)) { Row(Modifier.navigationBarsPadding().padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) { Text("تمرير تلقائي", color = Color.White, fontSize = 12.sp, modifier = Modifier.weight(1f)); IconButton(onClick = { autoScrollEnabled = !autoScrollEnabled }) { Icon(if (autoScrollEnabled) Icons.Default.Pause else Icons.Default.PlayArrow, null, tint = accent) }; IconButton(onClick = { showSpeedPicker = !showSpeedPicker }) { Icon(Icons.Default.Timer, null, tint = Color.White) }; if (failedImageUrls.isNotEmpty()) IconButton(onClick = { retry() }) { Icon(Icons.Default.Sync, "إعادة الجلب", tint = Red) } } } }
-        if (showSpeedPicker) Surface(Modifier.align(Alignment.BottomCenter).padding(bottom = 62.dp), color = Surface3, shape = RoundedCornerShape(12.dp)) { Row(Modifier.padding(8.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) { (1..5).forEach { speed -> FilterChip(autoScrollSpeed == speed, { autoScrollSpeed = speed; showSpeedPicker = false }, label = { Text("$speed") }) } } }
+        if (showSpeedPicker) Surface(Modifier.align(Alignment.BottomCenter).padding(bottom = 62.dp), color = Surface3, shape = InputShape) { Row(Modifier.padding(8.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) { (1..5).forEach { speed -> FilterChip(autoScrollSpeed == speed, { autoScrollSpeed = speed; showSpeedPicker = false }, label = { Text("$speed") }) } } }
         if (showReaderSettings) {
             ModalBottomSheet(onDismissRequest = { showReaderSettings = false }, containerColor = Color.Black, contentColor = Color.White, dragHandle = { BottomSheetDefaults.DragHandle(color = TextDim) }) {
                 Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
@@ -2132,7 +2152,7 @@ private fun DownloadsScreen(accent: Color, onBack: () -> Unit) {
                     val title = parts.getOrNull(0).orEmpty()
                     val total = parts.getOrNull(1).orEmpty()
                     val done = parts.getOrNull(2).orEmpty()
-                    Surface(color = Surface2, shape = RoundedCornerShape(14.dp), border = BorderStroke(1.dp, Border)) {
+                    Surface(color = Surface2, shape = InputShape, border = BorderStroke(1.dp, Border)) {
                         Column(Modifier.padding(14.dp)) {
                             Text(title, color = TextPri, fontSize = 15.sp, fontWeight = FontWeight.Bold)
                             Text("$done من $total فصل", color = TextSec, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
@@ -2159,6 +2179,7 @@ private fun ProfileScreen(accent: Color, onBack: () -> Unit) {
         uri?.toString()?.let {
             avatarUrl = it
             AuthStore.updateAvatar(context, it)
+            scope.launch { runCatching { AuthStore.syncAvatar(it) } }
         }
     }
 
@@ -2199,7 +2220,7 @@ private fun ProfileScreen(accent: Color, onBack: () -> Unit) {
                         // Edit name button
                         IconButton(onClick = { nameInput = AuthStore.displayName; editNameDialog = true },
                             modifier = Modifier.size(38.dp)) {
-                            Surface(color = accent.copy(.15f), shape = RoundedCornerShape(10.dp)) {
+                            Surface(color = accent.copy(.15f), shape = ButtonShape) {
                                 Icon(Icons.Default.Edit, null, tint = accent,
                                     modifier = Modifier.padding(7.dp).size(16.dp))
                             }
@@ -2252,7 +2273,7 @@ private fun ProfileScreen(accent: Color, onBack: () -> Unit) {
                     fontWeight = FontWeight.SemiBold, letterSpacing = .5.sp)
             }
             item {
-                Surface(color = Surface2, shape = RoundedCornerShape(14.dp),
+                Surface(color = Surface2, shape = InputShape,
                     border = BorderStroke(1.dp, Border)) {
                     Box(Modifier.fillMaxWidth().padding(24.dp), Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -2291,7 +2312,7 @@ private fun ProfileScreen(accent: Color, onBack: () -> Unit) {
                         focusedLabelColor = accent, unfocusedLabelColor = TextSec,
                         unfocusedContainerColor = Surface3, focusedContainerColor = Surface3
                     ),
-                    shape = RoundedCornerShape(12.dp),
+                    shape = InputShape,
                     modifier = Modifier.fillMaxWidth()
                 )
             },
@@ -2310,7 +2331,7 @@ private fun ProfileScreen(accent: Color, onBack: () -> Unit) {
                         }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = accent),
-                    shape = RoundedCornerShape(10.dp)
+                    shape = ButtonShape
                 ) {
                     if (savingName) CircularProgressIndicator(Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
                     else Text("حفظ", color = Color.White)
@@ -2536,7 +2557,7 @@ private fun SpringCard(onClick:()->Unit, content:@Composable ()->Unit) {
 }
 
 @Composable private fun StatBox(value:String, label:String, icon:ImageVector, modifier:Modifier, tint:Color=TextSec) {
-    Surface(color=Surface2, shape=RoundedCornerShape(12.dp), modifier=modifier) {
+    Surface(color=Surface2, shape=InputShape, modifier=modifier) {
         Column(Modifier.padding(12.dp), horizontalAlignment=Alignment.CenterHorizontally) {
             Icon(icon, null, tint=tint, modifier=Modifier.size(17.dp))
             Spacer(Modifier.height(4.dp))
@@ -2587,7 +2608,7 @@ private fun SpringCard(onClick:()->Unit, content:@Composable ()->Unit) {
 @Composable private fun D2() { HorizontalDivider(modifier = Modifier.padding(horizontal=16.dp), color=Border, thickness = .5.dp) }
 
 @Composable private fun SCard(content:@Composable ColumnScope.()->Unit) {
-    Surface(color=Surface2, shape=RoundedCornerShape(14.dp),
+    Surface(color=Surface2, shape=InputShape,
         modifier=Modifier.padding(horizontal=14.dp, vertical=4.dp)) { Column(content=content) }
 }
 
