@@ -6,6 +6,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.MediaType.Companion.toMediaType
 import org.jsoup.Jsoup
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
@@ -64,6 +66,11 @@ object CookieStore {
 // SCRAPER
 // ─────────────────────────────────────────────────────────────
 object Scraper {
+
+    private data class AniMetadata(
+        val author: String = "", val artist: String = "", val status: String = "",
+        val year: String = "", val description: String = "", val genres: List<String> = emptyList()
+    )
 
     private fun cleanMeta(v: String): String {
         val bad = setOf("updating", "n/a", "unknown", "-", "?", "تحديث", "جاري التحديث")
@@ -153,6 +160,39 @@ object Scraper {
         null
     }
 
+    private fun fetchAniList(title: String): AniMetadata? = runCatching {
+        val query = """
+            query(${"$"}search: String) { Page(perPage: 1) { media(search: ${"$"}search, type: MANGA) {
+              description(asHtml: false) status startDate { year } genres
+              staff(perPage: 15) { edges { role node { name { full } } } }
+            } } }
+        """.trimIndent()
+        val body = JSONObject().put("query", query)
+            .put("variables", JSONObject().put("search", title)).toString()
+            .toRequestBody("application/json; charset=utf-8".toMediaType())
+        val request = Request.Builder().url("https://graphql.anilist.co").post(body)
+            .header("Accept", "application/json").header("Content-Type", "application/json").build()
+        OkHttpClient.Builder().connectTimeout(12, TimeUnit.SECONDS).readTimeout(15, TimeUnit.SECONDS).build()
+            .newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@use null
+                val media = JSONObject(response.body?.string().orEmpty()).optJSONObject("data")
+                    ?.optJSONObject("Page")?.optJSONArray("media")?.optJSONObject(0) ?: return@use null
+                var author = ""; var artist = ""
+                val staff = media.optJSONObject("staff")?.optJSONArray("edges")
+                for (i in 0 until (staff?.length() ?: 0)) {
+                    val edge = staff?.optJSONObject(i) ?: continue
+                    val name = edge.optJSONObject("node")?.optJSONObject("name")?.optString("full").orEmpty()
+                    val role = edge.optString("role").lowercase()
+                    if (author.isBlank() && (role.contains("story") || role.contains("author") || role.contains("original"))) author = name
+                    if (artist.isBlank() && (role.contains("art") || role.contains("illustrat") || role.contains("draw"))) artist = name
+                }
+                AniMetadata(author, artist, when (media.optString("status")) {
+                    "FINISHED" -> "مكتملة"; "RELEASING" -> "مستمرة"; "HIATUS" -> "متوقفة مؤقتاً"; "CANCELLED" -> "ملغاة"; else -> ""
+                }, media.optJSONObject("startDate")?.optInt("year", 0)?.takeIf { it > 0 }?.toString().orEmpty(),
+                    media.optString("description").trim(), media.optJSONArray("genres")?.let { a -> (0 until a.length()).map { a.optString(it) } } ?: emptyList())
+            }
+    }.getOrNull()
+
     fun isCf(html: String) = html.contains("Just a moment") ||
             html.contains("cf-browser-verification") ||
             html.contains("Checking your browser") ||
@@ -230,21 +270,25 @@ object Scraper {
 
         val article = jsonLd()
         val publishedYear = article?.optString("datePublished")?.take(4).orEmpty()
+        val ani = fetchAniList(title)
 
-        val status = trustedStatusOverride(url, title)
+        val siteStatus = trustedStatusOverride(url, title)
             ?: normalizeStatus(cleanMeta(metaVal("الحالة", "Status", "Durum")))
-        val author = cleanMeta(metaVal("المؤلف", "Author", "Yazar")).ifEmpty {
+        val status = ani?.status.orEmpty().ifEmpty { siteStatus }
+        val siteAuthor = cleanMeta(metaVal("المؤلف", "Author", "Yazar")).ifEmpty {
             cleanMeta(article?.optJSONObject("author")?.optString("name").orEmpty())
         }
-        val artist = cleanMeta(metaVal("الرسام", "Artist", "Çizer"))
-        val year   = cleanMeta(metaVal("سنة", "Released", "Year")).ifEmpty { publishedYear }
-        val origin = cleanMeta(metaVal("النوع", "Type", "Tür")).ifEmpty { genres.joinToString(" , ") }
+        val author = ani?.author.orEmpty().ifEmpty { siteAuthor }
+        val artist = ani?.artist.orEmpty().ifEmpty { cleanMeta(metaVal("الرسام", "Artist", "Çizer")) }
+        val year   = ani?.year.orEmpty().ifEmpty { cleanMeta(metaVal("سنة", "Released", "Year")).ifEmpty { publishedYear } }
+        val origin = ani?.genres.orEmpty().ifEmpty { cleanMeta(metaVal("النوع", "Type", "Tür")).ifEmpty { genres } }.joinToString(" , ")
 
         // Description - clean of links/tags
-        val desc = doc.selectFirst(".description-summary .summary__content, .description-summary p, .manga-excerpt p")
+        val siteDesc = doc.selectFirst(".description-summary .summary__content, .description-summary p, .manga-excerpt p")
             ?.text()?.trim().orEmpty().ifEmpty {
                 doc.selectFirst("meta[property=og:description]")?.attr("content")?.trim().orEmpty()
             }
+        val desc = ani?.description.orEmpty().ifEmpty { siteDesc }
 
         // Rating
         val rating = doc.selectFirst(".score.font-meta, .post-rating .score")?.text()?.trim() ?: ""
