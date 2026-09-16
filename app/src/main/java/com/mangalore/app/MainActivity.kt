@@ -2,6 +2,8 @@ package com.mangalore.app
 
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.content.Intent
+import android.net.Uri
 import android.view.WindowManager
 import android.os.Handler
 import android.os.Looper
@@ -121,9 +123,19 @@ data class ReadingProgress(val item: MangaItem, val manga: MangaDetail, val chap
 // ENTRY
 // ══════════════════════════════════════════════════════════════
 class MainActivity : ComponentActivity() {
+    private var oauthTick by mutableIntStateOf(0)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { App() }
+        handleOAuthIntent(intent)
+        setContent { App(oauthTick) }
+    }
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleOAuthIntent(intent)
+    }
+    private fun handleOAuthIntent(intent: Intent?) {
+        if (intent?.data?.scheme == "mangalore") oauthTick++
     }
 }
 
@@ -139,7 +151,7 @@ private fun SplashScreen() {
 }
 
 @Composable
-private fun AuthScreen(onSignedIn: () -> Unit) {
+private fun AuthScreen(onSignedIn: () -> Unit, onGoogle: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var register by remember { mutableStateOf(false) }
@@ -171,6 +183,11 @@ private fun AuthScreen(onSignedIn: () -> Unit) {
             }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Accent)) {
                 if (busy) CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp), strokeWidth = 2.dp) else Text(if (register) "إنشاء الحساب" else "دخول", color = Color.White)
             }
+            OutlinedButton(onClick = onGoogle, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(10.dp), border = BorderStroke(1.dp, Border)) {
+                Text("G", color = Color(0xFF4285F4), fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                Spacer(Modifier.width(8.dp))
+                Text("المتابعة باستخدام Google", color = TextPri, fontFamily = Font)
+            }
             TextButton(onClick = { register = !register; error = "" }) { Text(if (register) "لديك حساب؟ سجل الدخول" else "ليس لديك حساب؟ أنشئ حسابًا", color = AccentLt) }
         }
     }
@@ -180,11 +197,17 @@ private fun AuthScreen(onSignedIn: () -> Unit) {
 // APP ROOT
 // ══════════════════════════════════════════════════════════════
 @Composable
-private fun App() {
+private fun App(oauthTick: Int = 0) {
     val context = LocalContext.current
     val appScope = rememberCoroutineScope()
     var authReady by remember { mutableStateOf(false) }
     var signedIn by remember { mutableStateOf(false) }
+    LaunchedEffect(oauthTick) {
+        val uri = (context as? MainActivity)?.intent?.data
+        if (uri?.scheme == "mangalore") {
+            AuthStore.completeGoogle(context, uri).onSuccess { signedIn = true }
+        }
+    }
     LaunchedEffect(Unit) {
         AuthStore.load(context)
         signedIn = AuthStore.hasSession()
@@ -195,7 +218,9 @@ private fun App() {
         return
     }
     if (!signedIn) {
-        AuthScreen(onSignedIn = { signedIn = true })
+        AuthScreen(onSignedIn = { signedIn = true }, onGoogle = {
+            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(AuthStore.googleAuthUrl())))
+        })
         return
     }
     var accent  by remember { mutableStateOf(Accent) }
@@ -1059,6 +1084,14 @@ private fun DetailScreen(
     var tab   by remember { mutableStateOf(0) }
     var newestFirst by remember { mutableStateOf(true) }
     var showDownloadDialog by remember { mutableStateOf(false) }
+    var selectedChapters by remember { mutableStateOf(setOf<Int>()) }
+    var commentText by remember { mutableStateOf("") }
+    var comments by remember { mutableStateOf(listOf<String>()) }
+    LaunchedEffect(d.url) {
+        val raw = context.getSharedPreferences("mangalore_comments", Context.MODE_PRIVATE)
+            .getString(d.url, "").orEmpty()
+        comments = raw.split("\n").filter { it.isNotBlank() }
+    }
     val inLib = lib.any { it.url == d.url }
     val asItem = MangaItem(d.slug, d.title, d.slug, d.coverUrl, d.coverFull, d.url)
 
@@ -1155,8 +1188,16 @@ private fun DetailScreen(
                         Icon(if (inLib) Icons.Default.Bookmark else Icons.Outlined.BookmarkBorder,
                             null, tint = if (inLib) accent else TextSec, modifier = Modifier.size(16.dp))
                     }
-                    OutlinedButton({ showDownloadDialog = true }, shape = RoundedCornerShape(10.dp), modifier = Modifier.wrapContentWidth()) {
-                        Icon(Icons.Default.Download, "تنزيل الفصول", tint = TextSec, modifier = Modifier.size(16.dp))
+                    Button(
+                        onClick = { showDownloadDialog = true },
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = accent),
+                        contentPadding = PaddingValues(horizontal = 13.dp, vertical = 9.dp),
+                        modifier = Modifier.wrapContentWidth()
+                    ) {
+                        Icon(Icons.Default.Download, "تنزيل الفصول", tint = Color.White, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(if (selectedChapters.isEmpty()) "تنزيل" else "تنزيل المحدد (${selectedChapters.size})", color = Color.White, fontFamily = Font, fontSize = 12.sp)
                     }
                 }
             }
@@ -1177,7 +1218,7 @@ private fun DetailScreen(
         // ── Tabs ──────────────────────────────────────────────
         item {
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
-                listOf("التفاصيل","الفصول (${d.chapters.size})").forEachIndexed { i, lbl ->
+                listOf("التفاصيل","الفصول (${d.chapters.size})","التعليقات (${comments.size})").forEachIndexed { i, lbl ->
                     val active = tab == i
                     Column(Modifier.weight(1f).clickable { tab = i },
                         horizontalAlignment = Alignment.CenterHorizontally) {
@@ -1218,6 +1259,37 @@ private fun DetailScreen(
                     }
                 }
             }
+        } else if (tab == 2) {
+            item {
+                Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("شارك رأيك بهذا العمل", color = TextPri, fontSize = 16.sp, fontWeight = FontWeight.Bold, fontFamily = Font)
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(
+                            value = commentText, onValueChange = { commentText = it },
+                            placeholder = { Text("اكتب تعليقك...", fontFamily = Font) },
+                            modifier = Modifier.weight(1f), maxLines = 3,
+                            colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = accent, unfocusedBorderColor = Border, focusedTextColor = TextPri, unfocusedTextColor = TextPri, focusedLabelColor = accent, unfocusedLabelColor = TextSec)
+                        )
+                        IconButton(enabled = commentText.isNotBlank(), onClick = {
+                            val value = commentText.trim()
+                            if (value.isNotEmpty()) {
+                                comments = comments + value
+                                commentText = ""
+                                context.getSharedPreferences("mangalore_comments", Context.MODE_PRIVATE).edit().putString(d.url, comments.joinToString("\n")).apply()
+                            }
+                        }) { Icon(Icons.Default.Send, "إضافة تعليق", tint = if (commentText.isBlank()) TextDim else accent) }
+                    }
+                }
+            }
+            items(comments) { comment ->
+                Surface(color = Surface2, shape = RoundedCornerShape(12.dp), modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp)) {
+                    Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Icon(Icons.Default.Person, null, tint = accent, modifier = Modifier.size(22.dp))
+                        Text(comment, color = TextSec, fontSize = 13.sp, lineHeight = 21.sp, fontFamily = Font)
+                    }
+                }
+            }
+            if (comments.isEmpty()) item { Text("لا توجد تعليقات بعد — كن أول من يكتب رأيه", color = TextDim, fontSize = 13.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(30.dp), fontFamily = Font) }
         } else {
             item {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 6.dp),
@@ -1226,6 +1298,9 @@ private fun DetailScreen(
                         label = { Text("الأحدث", fontFamily = Font) }, leadingIcon = { Icon(Icons.Default.ArrowDownward, null) })
                     FilterChip(selected = !newestFirst, onClick = { newestFirst = false },
                         label = { Text("الأقدم", fontFamily = Font) }, leadingIcon = { Icon(Icons.Default.ArrowUpward, null) })
+                    TextButton(onClick = { selectedChapters = if (selectedChapters.size == d.chapters.size) emptySet() else d.chapters.indices.toSet() }) {
+                        Text(if (selectedChapters.size == d.chapters.size) "إلغاء الكل" else "تحديد الكل", color = accent, fontFamily = Font, fontSize = 12.sp)
+                    }
                 }
             }
             val orderedChapters = if (newestFirst) d.chapters.asReversed() else d.chapters
@@ -1266,6 +1341,9 @@ private fun DetailScreen(
                                 maxLines = 1, overflow = TextOverflow.Ellipsis)
                             Text(progressLabel, color = progressColor, fontSize = 11.sp, fontWeight = if (progress != null) FontWeight.Medium else FontWeight.Normal)
                         }
+                        Checkbox(checked = selectedChapters.contains(originalIndex), onCheckedChange = { checked ->
+                            selectedChapters = if (checked) selectedChapters + originalIndex else selectedChapters - originalIndex
+                        }, colors = CheckboxDefaults.colors(checkedColor = accent, uncheckedColor = TextDim))
                         Icon(if (progress?.completed == true) Icons.Default.CheckCircle else Icons.Default.PlayArrow,
                             null, tint = progressColor, modifier = Modifier.size(18.dp))
                     }
@@ -1279,10 +1357,13 @@ private fun DetailScreen(
         var to by remember { mutableStateOf(d.chapters.size.toString()) }
         AlertDialog(
             onDismissRequest = { showDownloadDialog = false },
-            title = { Text("تنزيل الفصول") },
+            containerColor = Surface2,
+            titleContentColor = TextPri,
+            textContentColor = TextSec,
+            title = { Text("تنزيل الفصول", fontFamily = Font, fontWeight = FontWeight.Bold) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("حدد فصلًا واحدًا أو نطاقًا للتنزيل على الجهاز", color = TextSec, fontSize = 12.sp)
+                    Text(if (selectedChapters.isEmpty()) "حدد فصلًا واحدًا أو نطاقًا للتنزيل على الجهاز" else "تم تحديد ${selectedChapters.size} فصل — يمكنك تعديل النطاق أو تنزيل المحدد", color = TextSec, fontSize = 12.sp, fontFamily = Font)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedTextField(from, { from = it }, label = { Text("من") }, singleLine = true, modifier = Modifier.weight(1f))
                         OutlinedTextField(to, { to = it }, label = { Text("إلى") }, singleLine = true, modifier = Modifier.weight(1f))
@@ -1291,9 +1372,11 @@ private fun DetailScreen(
             },
             confirmButton = {
                 TextButton(onClick = {
-                    val start = (from.toIntOrNull() ?: 1) - 1
-                    val end = (to.toIntOrNull() ?: from.toIntOrNull() ?: 1) - 1
-                    if (d.chapters.isNotEmpty()) LocalDownloads.enqueue(context, d, start, end)
+                    val rangeStart = ((from.toIntOrNull() ?: 1) - 1).coerceIn(0, d.chapters.lastIndex)
+                    val rangeEnd = ((to.toIntOrNull() ?: from.toIntOrNull() ?: 1) - 1).coerceIn(rangeStart, d.chapters.lastIndex)
+                    val indexes = if (selectedChapters.isNotEmpty()) selectedChapters.sorted() else (rangeStart..rangeEnd).toList()
+                    if (d.chapters.isNotEmpty()) LocalDownloads.enqueue(context, d, indexes)
+                    selectedChapters = emptySet()
                     showDownloadDialog = false
                 }) { Text("تنزيل", color = accent) }
             },

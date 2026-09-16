@@ -16,10 +16,10 @@ import java.io.File
 object LocalDownloads {
     private const val PREFS = "mangalore_downloads"
 
-    fun enqueue(context: Context, manga: MangaDetail, first: Int, last: Int) {
-        val from = first.coerceIn(0, manga.chapters.lastIndex)
-        val to = last.coerceIn(from, manga.chapters.lastIndex)
-        val chapters = manga.chapters.subList(from, to + 1)
+    fun enqueue(context: Context, manga: MangaDetail, first: Int, last: Int) = enqueue(context, manga, (first..last).toList())
+    fun enqueue(context: Context, manga: MangaDetail, indexes: List<Int>) {
+        val chapters = indexes.distinct().sorted().mapNotNull { manga.chapters.getOrNull(it) }
+        if (chapters.isEmpty()) return
         val key = manga.url.hashCode().toString()
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putString(key, "${manga.title}|${chapters.size}|0|${manga.coverUrl}").apply()
@@ -49,12 +49,17 @@ class ChapterDownloadWorker(appContext: Context, params: WorkerParameters) : Cor
         var completed = 0
         for ((index, url) in urls.withIndex()) {
             val (images, needsCf) = Scraper.fetchChapterImages(url)
-            if (needsCf) return@withContext Result.retry()
+            if (needsCf || images.isEmpty()) return@withContext Result.failure()
             val chapterDir = File(root, "chapter_$index").apply { mkdirs() }
             for ((page, image) in images.withIndex()) {
                 val file = File(chapterDir, "%04d.jpg".format(page))
-                client.newCall(Request.Builder().url(image).build()).execute().use { response ->
-                    if (response.isSuccessful) response.body?.bytes()?.let(file::writeBytes)
+                client.newCall(Request.Builder().url(image)
+                        .header("Referer", "https://mangalik.net/")
+                        .header("User-Agent", "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/124.0.0.0")
+                        .apply { if (CookieStore.has()) header("Cookie", CookieStore.cfCookies) }
+                        .build()).execute().use { response ->
+                    if (!response.isSuccessful) return@withContext Result.failure()
+                    response.body?.bytes()?.let(file::writeBytes) ?: return@withContext Result.failure()
                 }
             }
             completed++

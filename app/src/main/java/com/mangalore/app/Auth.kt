@@ -1,6 +1,7 @@
 package com.mangalore.app
 
 import android.content.Context
+import android.net.Uri
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -35,6 +36,27 @@ object AuthStore {
     }
 
     fun hasSession() = accessToken.isNotBlank() && userId.isNotBlank()
+    fun googleAuthUrl(): String = BASE + "/auth/v1/authorize?provider=google&redirect_to=mangalore://auth/callback"
+    suspend fun completeGoogle(context: Context, uri: Uri): Result<Unit> = runCatching {
+        val fragment = uri.fragment.orEmpty().removePrefix("#")
+        val params = fragment.split("&").mapNotNull { part ->
+            val bits = part.split("=", limit = 2)
+            if (bits.size == 2) java.net.URLDecoder.decode(bits[0], "UTF-8") to java.net.URLDecoder.decode(bits[1], "UTF-8") else null
+        }.toMap()
+        val token = params["access_token"].orEmpty()
+        if (token.isBlank()) error("لم يكتمل تسجيل Google")
+        accessToken = token
+        val refresh = params["refresh_token"].orEmpty()
+        val user = request("/auth/v1/user", "GET", null, token)
+        userId = user.optString("id")
+        displayName = user.optJSONObject("user_metadata")?.optString("full_name")
+            ?.ifBlank { user.optJSONObject("user_metadata")?.optString("name") }
+            .orEmpty()
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putString(ACCESS, accessToken).putString(REFRESH, refresh)
+            .putString(USER_ID, userId).putString(NAME, displayName).apply()
+        fetchProfile(context)
+    }
 
     private fun save(context: Context, obj: JSONObject) {
         accessToken = obj.optString("access_token")
