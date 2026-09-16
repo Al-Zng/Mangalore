@@ -1773,8 +1773,8 @@ private fun DetailScreen(
                 val progressLabel = when {
                     progress?.completed == true -> "تمت المشاهدة"
                     progress != null -> "أكمل من الصفحة ${progress.page}"
-                    ch.date.isNotEmpty() -> ch.date
-                    else -> formatRelativeDate(ch.date).ifBlank { "التاريخ غير متوفر" }
+                    ch.date.isNotEmpty() -> formatRelativeDate(ch.date).ifBlank { "التاريخ غير متوفر" }
+                    else -> "التاريخ غير متوفر"
                 }
                 val progressColor = when {
                     progress?.completed == true -> Green
