@@ -100,6 +100,18 @@ object AuthStore {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(NAME, displayName).apply()
     }
 
+    suspend fun updateDisplayName(context: Context, name: String) {
+        require(name.isNotBlank()) { "الاسم لا يمكن أن يكون فارغاً" }
+        request(
+            "/rest/v1/profiles?id=eq.$userId",
+            "PATCH",
+            JSONObject().put("display_name", name.trim()),
+            accessToken
+        )
+        displayName = name.trim()
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(NAME, displayName).apply()
+    }
+
     fun signOut(context: Context) {
         accessToken = ""; userId = ""; displayName = ""
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().apply()
