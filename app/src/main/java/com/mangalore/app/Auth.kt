@@ -71,7 +71,8 @@ object AuthStore {
         val refresh = params["refresh_token"].orEmpty()
         val user = request("/auth/v1/user", "GET", null, token)
         userId = user.optString("id")
-        displayName = user.optJSONObject("user_metadata")?.optString("full_name")
+        displayName = user.optJSONObject("user_metadata")?.optString("display_name")
+            ?.ifBlank { user.optJSONObject("user_metadata")?.optString("full_name") }
             ?.ifBlank { user.optJSONObject("user_metadata")?.optString("name") }
             .orEmpty()
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
@@ -137,7 +138,11 @@ object AuthStore {
                 .ifBlank { metadata?.optString("picture").orEmpty() }
                 .ifBlank { avatarUrl }
             val obj = request("/rest/v1/profiles?id=eq.$userId&select=display_name,username", "GET", null, accessToken)
-            displayName = obj.optString("display_name", displayName)
+            val profileName = obj.optString("display_name").trim()
+            if (profileName.isNotBlank()) displayName = profileName
+            else if (displayName.isNotBlank()) {
+                request("/rest/v1/profiles?id=eq.$userId", "PATCH", JSONObject().put("display_name", displayName.trim()), accessToken)
+            }
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
                 .putString(NAME, displayName).putString(AVATAR, avatarUrl).apply()
         }
