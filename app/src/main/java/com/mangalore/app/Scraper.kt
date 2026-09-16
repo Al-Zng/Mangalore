@@ -98,9 +98,13 @@ object Scraper {
         "Harem" to "حريم", "Thriller" to "إثارة", "Tragedy" to "مأساة", "Crime" to "جريمة"
     )[value] ?: value
 
-    private fun translateFormat(value: String): String = when (value.uppercase()) {
-        "MANGA" -> "مانجا"; "MANHWA" -> "مانهوا"; "MANHUA" -> "مانها"
-        "ONE_SHOT" -> "فصل واحد"; "NOVEL" -> "رواية"; else -> ""
+    private fun translateFormat(value: String, country: String): String = when {
+        value.equals("ONE_SHOT", true) -> "فصل واحد"
+        value.equals("NOVEL", true) -> "رواية"
+        country.equals("KR", true) -> "مانهوا"
+        country.equals("CN", true) || country.equals("TW", true) -> "مانها"
+        value.equals("MANGA", true) || country.equals("JP", true) -> "مانجا"
+        else -> ""
     }
 
     private fun trustedStatusOverride(url: String, title: String): String? {
@@ -178,7 +182,7 @@ object Scraper {
     private fun fetchAniList(title: String): AniMetadata? = runCatching {
         val query = """
             query(${"$"}search: String) { Page(perPage: 1) { media(search: ${"$"}search, type: MANGA) {
-              format description(asHtml: false) status startDate { year } genres
+              format countryOfOrigin description(asHtml: false) status startDate { year } genres
               staff(perPage: 15) { edges { role node { name { full } } } }
             } } }
         """.trimIndent()
@@ -204,7 +208,7 @@ object Scraper {
                 AniMetadata(author, artist, when (media.optString("status")) {
                     "FINISHED" -> "مكتملة"; "RELEASING" -> "مستمرة"; "HIATUS" -> "متوقفة مؤقتاً"; "CANCELLED" -> "ملغاة"; else -> ""
                 }, media.optJSONObject("startDate")?.optInt("year", 0)?.takeIf { it > 0 }?.toString().orEmpty(),
-                    translateFormat(media.optString("format")), media.optString("description").trim(),
+                    translateFormat(media.optString("format"), media.optString("countryOfOrigin")), media.optString("description").trim(),
                     media.optJSONArray("genres")?.let { a -> (0 until a.length()).map { translateGenre(a.optString(it)) } } ?: emptyList())
             }
     }.getOrNull()
