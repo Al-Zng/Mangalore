@@ -1726,9 +1726,14 @@ private fun DetailScreen(
                                     if (value.isNotEmpty()) {
                                         comments = comments + value
                                         commentText = ""
+                                        val optimistic = CommentRecord("local-${System.currentTimeMillis()}", AuthStore.userId, AuthStore.displayName.ifBlank { "قارئ مانجالور" }, AuthStore.avatarUrl, value, null, commentSpoiler, "", AuthStore.isOwner)
+                                        richComments = (richComments + optimistic).distinctBy { it.id }
                                         cloudScope.launch {
                                             runCatching { CloudStore.addComment(d.url, d.slug, value, commentSpoiler) }.onSuccess {
-                                                runCatching { CloudStore.fetchComments(d.url) }.getOrNull()?.takeIf { it.isNotEmpty() }?.let { richComments = it }
+                                                runCatching { CloudStore.fetchComments(d.url) }.getOrNull()?.let { fetched ->
+                                                    val pending = richComments.filter { it.id.startsWith("local-") && it.content == value }
+                                                    richComments = (fetched + pending).distinctBy { it.content + it.userId }
+                                                }
                                             }
                                         }
                                         commentSpoiler = false
