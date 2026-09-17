@@ -1520,6 +1520,7 @@ private fun DetailScreen(
     var comments by remember { mutableStateOf(listOf<String>()) }
     var richComments by remember { mutableStateOf<List<CommentRecord>>(emptyList()) }
     var commentSpoiler by remember { mutableStateOf(false) }
+    var reactions by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
     val visibleRemoteComments = richComments.filter { it.parentId == null }
     LaunchedEffect(d.url) {
         comments = readSavedComments(context, d.url)
@@ -1823,10 +1824,16 @@ private fun DetailScreen(
                                 }
                                 Text(commentDate(comment.createdAt), color = TextDim, fontSize = 10.sp)
                             }
+                            if (comment.name.equals("MangaLore", true)) Surface(color = Gold.copy(.16f), shape = RoundedCornerShape(6.dp)) { Text("TOP", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)) }
                             if (comment.userId == AuthStore.userId || AuthStore.isOwner) IconButton({ cloudScope.launch { runCatching { CloudStore.deleteComment(comment.id) }; richComments = CloudStore.fetchComments(d.url) } }) { Icon(Icons.Default.DeleteOutline, "حذف التعليق", tint = Red) }
                         }
                         if (comment.spoiler && !revealed) Button({ revealed = true }, colors = ButtonDefaults.buttonColors(containerColor = Color.White), shape = ButtonShape) { Text("إظهار الحرق", color = Color.Black) }
                         else Text(comment.content, color = TextPri, fontSize = 15.sp, lineHeight = 24.sp)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            val reaction = reactions[comment.id] ?: 0
+                            TextButton({ reactions = reactions + (comment.id to if (reaction == 1) 0 else 1) }) { Icon(Icons.Default.ThumbUp, "إعجاب", tint = if (reaction == 1) accent else TextSec, modifier = Modifier.size(17.dp)); Text("إعجاب", color = if (reaction == 1) accent else TextSec, fontSize = 11.sp) }
+                            TextButton({ reactions = reactions + (comment.id to if (reaction == -1) 0 else -1) }) { Icon(Icons.Default.ThumbDown, "عدم إعجاب", tint = if (reaction == -1) Red else TextSec, modifier = Modifier.size(17.dp)); Text("عدم إعجاب", color = if (reaction == -1) Red else TextSec, fontSize = 11.sp) }
+                        }
                         if (comment.parentId != null) Text("↳ رد على تعليق", color = accent, fontSize = 11.sp)
                     }
                 }
