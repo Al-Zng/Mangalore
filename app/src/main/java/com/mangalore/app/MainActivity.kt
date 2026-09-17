@@ -955,7 +955,6 @@ private fun HomeScreen(accent: Color, onMenu: () -> Unit, onSearch: () -> Unit, 
     LaunchedEffect(Unit) { load() }
 
     val list    = if (tab == 1) popular else latest
-    val feature = list.firstOrNull()
 
     Box(Modifier.fillMaxSize()) {
         LazyColumn(Modifier.fillMaxSize().statusBarsPadding().padding(top = 72.dp)) {
@@ -963,10 +962,6 @@ private fun HomeScreen(accent: Color, onMenu: () -> Unit, onSearch: () -> Unit, 
         // ── Shimmer or Error ──────────────────────────────────
         if (loading) {
             item {
-                // Hero shimmer
-                Box(Modifier.fillMaxWidth().height(252.dp).padding(horizontal = 14.dp, vertical = 6.dp)
-                    .clip(RoundedCornerShape(20.dp)).background(staticPlaceholder()))
-                Spacer(Modifier.height(14.dp).fillMaxWidth())
                 // Tab shimmer
                 Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1008,123 +1003,6 @@ private fun HomeScreen(accent: Color, onMenu: () -> Unit, onSearch: () -> Unit, 
                 }
             }
             return@LazyColumn
-        }
-
-        // ══ HERO BANNER ═══════════════════════════════════════
-        if (feature != null) {
-            item {
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .height(252.dp)
-                        .padding(horizontal = 14.dp, vertical = 6.dp)
-                        .clip(RoundedCornerShape(20.dp))
-                        .clickable { onPick(feature) }
-                ) {
-                    // Full-bleed background image (blurred)
-                    if (feature.coverUrl.isNotEmpty()) {
-                        Img(
-                            feature.coverFull.ifEmpty { feature.coverUrl },
-                            Modifier.fillMaxSize().blur(18.dp),
-                            ContentScale.Crop
-                        )
-                    } else {
-                        Box(Modifier.fillMaxSize().background(
-                            Brush.linearGradient(listOf(accent.copy(.5f), Surface3))))
-                    }
-
-                    // Bottom-to-top fade: transparent → app background
-                    Box(Modifier.matchParentSize().background(
-                        Brush.verticalGradient(
-                            0f   to Color.Black.copy(.15f),
-                            .35f to Color.Black.copy(.40f),
-                            1f   to Bg
-                        )
-                    ))
-
-                    // ──── Inner content row ────────────────────
-                    Row(
-                        Modifier
-                            .align(Alignment.BottomStart)
-                            .fillMaxWidth()
-                            .padding(horizontal = 14.dp, vertical = 16.dp),
-                        verticalAlignment = Alignment.Bottom,
-                        horizontalArrangement = Arrangement.spacedBy(14.dp)
-                    ) {
-                        // RIGHT side (RTL first = right) — Cover thumbnail card
-                        Box(
-                            Modifier
-                                .width(CoverWidthHero).height(CoverHeightHero)
-                                .clip(RoundedCornerShape(14.dp))
-                                .shadow(12.dp, RoundedCornerShape(14.dp))
-                                .border(1.5.dp, Color.White.copy(.15f), RoundedCornerShape(14.dp))
-                        ) {
-                            Img(
-                                feature.coverFull.ifEmpty { feature.coverUrl },
-                                Modifier.fillMaxSize()
-                            )
-                        }
-
-                        // LEFT side — title + genres + button
-                        Column(
-                            Modifier.weight(1f).padding(bottom = 4.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            // Genre chips
-                            if (feature.genres.isNotEmpty()) {
-                                Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                                    feature.genres.take(2).forEach { GChip(it, accent) }
-                                }
-                            }
-
-                            // Title
-                            Text(
-                                feature.title,
-                                color = TextPri, fontSize = 16.sp, fontWeight = FontWeight.Bold,
-                                lineHeight = 22.sp, maxLines = 3, overflow = TextOverflow.Ellipsis,
-                                style = LocalTextStyle.current.copy(
-                                    shadow = Shadow(Color.Black.copy(.8f), Offset(0f, 2f), blurRadius = 4f)
-                                )
-                            )
-
-                            // Latest chapter tag
-                            if (feature.latestChapter.isNotEmpty()) {
-                                Row(verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                                    Icon(Icons.Default.MenuBook, null, tint = accent,
-                                        modifier = Modifier.size(12.dp))
-                                    Text(feature.latestChapter, color = TextSec, fontSize = 11.sp)
-                                }
-                            }
-
-                            // Read button
-                            Button(
-                                onClick = { onPick(feature) },
-                                colors  = ButtonDefaults.buttonColors(containerColor = accent),
-                                shape   = RoundedCornerShape(10.dp),
-                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 7.dp),
-                                modifier = Modifier.wrapContentWidth()
-                            ) {
-                                Icon(Icons.Default.PlayArrow, null, Modifier.size(15.dp))
-                                Spacer(Modifier.width(5.dp))
-                                Text("ابدأ القراءة", fontSize = 13.sp, color = Color.White,
-                                    fontFamily = Font)
-                            }
-                        }
-                    }
-
-                    // "Featured" badge top-right (RTL = top start = physically top right)
-                    Surface(
-                        color   = Color.Black.copy(.55f),
-                        shape   = RoundedCornerShape(bottomEnd = 12.dp),
-                        modifier = Modifier.align(Alignment.TopStart)
-                    ) {
-                        Text("⭐ مميز", color = Color.White, fontSize = 10.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp))
-                    }
-                }
-            }
         }
 
         // ── Tabs ──────────────────────────────────────────────

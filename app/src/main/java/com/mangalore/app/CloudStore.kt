@@ -58,7 +58,11 @@ object CloudStore {
             val profile = profiles[userId]
             val name = profile?.optString("display_name").orEmpty().ifBlank { if (userId == AuthStore.userId) AuthStore.displayName else "قارئ مانجالور" }
             val avatar = profile?.optString("avatar_url").orEmpty().ifBlank { if (userId == AuthStore.userId) AuthStore.avatarUrl else "" }
-            CommentRecord(o.optString("id"), userId, name, avatar, o.optString("content"), o.optString("parent_id").ifBlank { null }, o.optBoolean("is_spoiler"), o.optString("created_at"), userId == AuthStore.userId && AuthStore.isOwner || name.equals("MangaLore", true) || name.equals("Mangalore", true))
+            // Supabase returns JSON null for top-level comments. JSONObject.optString()
+            // turns that value into the literal string "null", which incorrectly hides
+            // the comment from the top-level list after the first refresh.
+            val parentId = if (o.isNull("parent_id")) null else o.optString("parent_id").takeIf { it.isNotBlank() }
+            CommentRecord(o.optString("id"), userId, name, avatar, o.optString("content"), parentId, o.optBoolean("is_spoiler"), o.optString("created_at"), userId == AuthStore.userId && AuthStore.isOwner || name.equals("MangaLore", true) || name.equals("Mangalore", true))
         } }
     }
 
