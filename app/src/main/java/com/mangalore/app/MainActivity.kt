@@ -638,8 +638,8 @@ private fun App(oauthTick: Int = 0) {
                 }
                 AnimatedVisibility(
                     visible = drawer,
-                    enter = fadeIn(tween(120)),
-                    exit = fadeOut(tween(90)),
+                    enter = fadeIn(tween(90)) + slideInHorizontally(tween(150, easing = FastOutSlowInEasing)) { it / 3 },
+                    exit = fadeOut(tween(70)) + slideOutHorizontally(tween(120, easing = FastOutSlowInEasing)) { it / 3 },
                     label = "rtl-drawer"
                 ) {
                     Drawer(accent, cur, { drawer = false }) { dest ->
@@ -2300,7 +2300,7 @@ private fun ProfileScreen(accent: Color, onBack: () -> Unit) {
                                 .then(if (AuthStore.isOwner) Modifier else Modifier.border(1.dp, Border, RoundedCornerShape(18.dp)))
                                 .clickable { if (!AuthStore.isOwner) avatarPicker.launch("image/*") }, Alignment.Center
                         ) {
-                            if (AuthStore.isOwner) Image(painterResource(R.drawable.logo), "شعار المالك", contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                            if (AuthStore.isOwner) Image(painterResource(R.drawable.logo), "شعار المالك", contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize().padding(3.dp))
                             else if (avatarUrl.isNotBlank()) AsyncImage(
                                 model = avatarUrl, contentDescription = "صورة المستخدم",
                                 contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()
@@ -2680,7 +2680,7 @@ private fun Drawer(accent:Color, cur:Dest, onClose:()->Unit, onNav:(String)->Uni
                             horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             Box(Modifier.size(48.dp).clip(CircleShape).background(if (AuthStore.isOwner) Color.Transparent else Surface3), Alignment.Center) {
-                                if (AuthStore.isOwner) Image(painterResource(R.drawable.logo), "شعار المالك", contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                                if (AuthStore.isOwner) Image(painterResource(R.drawable.logo), "شعار المالك", contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize().padding(3.dp))
                                 else if (AuthStore.avatarUrl.isNotBlank()) AsyncImage(
                                     model = AuthStore.avatarUrl, contentDescription = "صورة المستخدم",
                                     contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()
