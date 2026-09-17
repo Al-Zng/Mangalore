@@ -7,6 +7,9 @@ import androidx.work.WorkManager
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.ExistingWorkPolicy
 import androidx.work.workDataOf
+import androidx.work.Constraints
+import androidx.work.NetworkType
+import androidx.work.BackoffPolicy
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -14,6 +17,9 @@ import okhttp3.Request
 import java.io.File
 import org.json.JSONObject
 import org.json.JSONArray
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import androidx.core.app.NotificationCompat
 
 data class DownloadGroup(
     val key: String, val title: String, val cover: String, val total: Int, val done: Int,
@@ -45,7 +51,8 @@ object LocalDownloads {
                 "cover" to manga.coverUrl,
                 "key" to key,
                 "urls" to chapters.map { it.url }.toTypedArray()
-            )).build()
+            )).setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 15, java.util.concurrent.TimeUnit.SECONDS).build()
         WorkManager.getInstance(context).enqueueUniqueWork("download_$key", ExistingWorkPolicy.REPLACE, req)
     }
 
@@ -80,6 +87,9 @@ object LocalDownloads {
         edit.apply()
         File(context.filesDir, "downloads/${group.title.hashCode()}").deleteRecursively()
     }
+
+    fun storageBytes(context: Context): Long = File(context.filesDir, "downloads").walkTopDown().filter { it.isFile }.sumOf { it.length() }
+    fun clearAll(context: Context) { groups(context).forEach { delete(context, it) }; File(context.filesDir, "downloads").deleteRecursively() }
 }
 
 class ChapterDownloadWorker(appContext: Context, params: WorkerParameters) : CoroutineWorker(appContext, params) {
@@ -92,13 +102,21 @@ class ChapterDownloadWorker(appContext: Context, params: WorkerParameters) : Cor
         val client = OkHttpClient()
         var completed = 0
         val prefs = applicationContext.getSharedPreferences("mangalore_downloads", Context.MODE_PRIVATE)
+        val nm = applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val channelId = "mangalore_downloads"
+        if (android.os.Build.VERSION.SDK_INT >= 26) nm.createNotificationChannel(NotificationChannel(channelId, "تنزيلات مانجالور", NotificationManager.IMPORTANCE_LOW))
+        fun notify(done: Int, text: String, ongoing: Boolean = true) {
+            nm.notify(key.hashCode(), NotificationCompat.Builder(applicationContext, channelId).setSmallIcon(com.mangalore.app.R.drawable.app).setContentTitle("تنزيل $title").setContentText(text).setOnlyAlertOnce(true).setOngoing(ongoing).setProgress(urls.size, done, false).build())
+        }
+        notify(0, "بدء التنزيل…")
         for ((index, url) in urls.withIndex()) {
             if (LocalDownloads.localImages(applicationContext, url).isNotEmpty()) {
                 completed++
+                notify(completed, "$completed من ${urls.size} فصول")
                 continue
             }
             val (images, needsCf) = Scraper.fetchChapterImages(url)
-            if (needsCf || images.isEmpty()) return@withContext Result.failure()
+            if (needsCf || images.isEmpty()) { notify(completed, "سيُستأنف التنزيل تلقائياً عند توفر الاتصال", false); return@withContext Result.retry() }
             val chapterDir = File(root, "chapter_${url.hashCode()}").apply { mkdirs() }
             for ((page, image) in images.withIndex()) {
                 val file = File(chapterDir, "%04d.jpg".format(page))
@@ -107,8 +125,8 @@ class ChapterDownloadWorker(appContext: Context, params: WorkerParameters) : Cor
                     .header("User-Agent", "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/124.0.0.0")
                     .apply { if (CookieStore.has()) header("Cookie", CookieStore.cfCookies) }
                     .build()).execute().use { response ->
-                        if (!response.isSuccessful) return@withContext Result.failure()
-                        response.body?.bytes()?.let(file::writeBytes) ?: return@withContext Result.failure()
+                        if (!response.isSuccessful) return@withContext Result.retry()
+                        response.body?.bytes()?.let(file::writeBytes) ?: return@withContext Result.retry()
                     }
             }
             completed++
@@ -116,7 +134,9 @@ class ChapterDownloadWorker(appContext: Context, params: WorkerParameters) : Cor
             val updated = if (old.trimStart().startsWith("{")) JSONObject(old).put("done", completed).toString()
             else "$key|$title|${urls.size}|$completed|$cover|${inputData.getString("mangaUrl").orEmpty()}|${urls.joinToString("§§")}"
             prefs.edit().putString("chapter_${url.hashCode()}", chapterDir.absolutePath).putString(key, updated).apply()
+            notify(completed, "$completed من ${urls.size} فصول")
         }
+        nm.cancel(key.hashCode())
         Result.success()
     }
 }

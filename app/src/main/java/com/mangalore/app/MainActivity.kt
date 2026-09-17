@@ -10,6 +10,7 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.os.Bundle
+import android.os.Build
 import java.io.File
 import android.webkit.CookieManager
 import android.webkit.WebResourceRequest
@@ -208,6 +209,7 @@ class MainActivity : ComponentActivity() {
     private var oauthTick by mutableIntStateOf(0)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (Build.VERSION.SDK_INT >= 33) requestPermissions(arrayOf("android.permission.POST_NOTIFICATIONS"), 1201)
         handleOAuthIntent(intent)
         setContent { App(oauthTick) }
     }
@@ -2465,6 +2467,14 @@ private fun SettingsScreen(accent:Color, amoled:Boolean, onAmoled:(Boolean)->Uni
     var fullscr  by remember { mutableStateOf(true) }
     var pageNum  by remember { mutableStateOf(true) }
     var imgQual  by remember { mutableStateOf(true) } // full-res images
+    var storageBytes by remember { mutableStateOf(LocalDownloads.storageBytes(context)) }
+    var clearStorageDialog by remember { mutableStateOf(false) }
+    fun storageLabel(bytes: Long): String = when {
+        bytes >= 1024L * 1024L * 1024L -> "%.2f GB".format(bytes / 1073741824.0)
+        bytes >= 1024L * 1024L -> "%.1f MB".format(bytes / 1048576.0)
+        bytes >= 1024L -> "%.1f KB".format(bytes / 1024.0)
+        else -> "$bytes بايت"
+    }
 
     LazyColumn(Modifier.fillMaxSize()) {
         item { TopBar("الإعدادات", accent, onBack) }
@@ -2484,6 +2494,15 @@ private fun SettingsScreen(accent:Color, amoled:Boolean, onAmoled:(Boolean)->Uni
                 SToggle("صور عالية الجودة", "تحميل الصور بأعلى دقة متاحة", imgQual) { imgQual = it }
                 D2()
                 SAction("مسح ذاكرة التخزين المؤقت", "تحرير مساحة التخزين", Icons.Default.DeleteSweep, accent) {}
+            }
+        }
+
+        item { SecLabel("إدارة التخزين", accent) }
+        item {
+            SCard {
+                SAction("التنزيلات المحلية", "${LocalDownloads.groups(context).size} مانجا • ${storageLabel(storageBytes)}", Icons.Default.Storage, accent) { storageBytes = LocalDownloads.storageBytes(context) }
+                D2()
+                SAction("مسح كل التنزيلات", "حذف الفصول المحفوظة وتحرير المساحة", Icons.Default.DeleteSweep, Red) { clearStorageDialog = true }
             }
         }
 
@@ -2524,6 +2543,14 @@ private fun SettingsScreen(accent:Color, amoled:Boolean, onAmoled:(Boolean)->Uni
             }
         }
     }
+
+    if (clearStorageDialog) AlertDialog(
+        onDismissRequest = { clearStorageDialog = false }, containerColor = Surface2,
+        title = { Text("مسح كل التنزيلات؟", color = Red, fontFamily = Font) },
+        text = { Text("سيتم حذف جميع الفصول المحفوظة من الجهاز ولا يمكن التراجع عن ذلك.", color = TextSec, fontFamily = Font) },
+        confirmButton = { TextButton({ LocalDownloads.clearAll(context); storageBytes = 0; clearStorageDialog = false }) { Text("مسح الكل", color = Red, fontFamily = Font) } },
+        dismissButton = { TextButton({ clearStorageDialog = false }) { Text("إلغاء", color = TextSec, fontFamily = Font) } }
+    )
 
     if (confirmLogout) AlertDialog(
         onDismissRequest = { confirmLogout = false }, containerColor = Surface2,
