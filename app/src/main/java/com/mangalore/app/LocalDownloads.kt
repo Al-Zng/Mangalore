@@ -120,6 +120,21 @@ class ChapterDownloadWorker(appContext: Context, params: WorkerParameters) : Cor
         fun notify(done: Int, text: String, ongoing: Boolean = true) {
             nm.notify(key.hashCode(), NotificationCompat.Builder(applicationContext, channelId).setSmallIcon(com.mangalore.app.R.drawable.app).setLargeIcon(coverBitmap).setContentTitle("تنزيل $title").setContentText(text).setOnlyAlertOnce(true).setOngoing(ongoing).setProgress(urls.size, done, false).build())
         }
+        fun downloadBytes(imageUrl: String): ByteArray? {
+            repeat(4) { attempt ->
+                runCatching {
+                    client.newCall(Request.Builder().url(imageUrl)
+                        .header("Referer", "https://mangalik.net/")
+                        .header("User-Agent", "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/124.0.0.0")
+                        .apply { if (CookieStore.has()) header("Cookie", CookieStore.cfCookies) }
+                        .build()).execute().use { response ->
+                            if (response.isSuccessful) response.body?.bytes()?.takeIf { it.isNotEmpty() } else null
+                        }
+                }.getOrNull()?.let { return it }
+                Thread.sleep((attempt + 1) * 1500L)
+            }
+            return null
+        }
         notify(0, "بدء التنزيل…")
         for ((index, url) in urls.withIndex()) {
             if (LocalDownloads.localImages(applicationContext, url).isNotEmpty()) {
@@ -127,19 +142,29 @@ class ChapterDownloadWorker(appContext: Context, params: WorkerParameters) : Cor
                 notify(completed, "$completed من ${urls.size} فصول")
                 continue
             }
-            val (images, needsCf) = Scraper.fetchChapterImages(url)
-            if (needsCf || images.isEmpty()) { notify(completed, "سيُستأنف التنزيل تلقائياً عند توفر الاتصال", false); return@withContext Result.retry() }
+            var images = emptyList<String>()
+            var needsCf = true
+            for (attempt in 0 until 3) {
+                val result = Scraper.fetchChapterImages(url)
+                images = result.first
+                needsCf = result.second
+                if (!needsCf && images.isNotEmpty()) break
+                notify(completed, "إعادة محاولة الفصل ${index + 1}…")
+                Thread.sleep((attempt + 1) * 3000L)
+            }
+            if (needsCf || images.isEmpty()) {
+                notify(completed, "تعذّر الوصول للفصل، ستتم إعادة المحاولة تلقائياً")
+                return@withContext Result.retry()
+            }
             val chapterDir = File(root, "chapter_${url.hashCode()}").apply { mkdirs() }
             for ((page, image) in images.withIndex()) {
                 val file = File(chapterDir, "%04d.jpg".format(page))
-                client.newCall(Request.Builder().url(image)
-                    .header("Referer", "https://mangalik.net/")
-                    .header("User-Agent", "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/124.0.0.0")
-                    .apply { if (CookieStore.has()) header("Cookie", CookieStore.cfCookies) }
-                    .build()).execute().use { response ->
-                        if (!response.isSuccessful) return@withContext Result.retry()
-                        response.body?.bytes()?.let(file::writeBytes) ?: return@withContext Result.retry()
-                    }
+                val bytes = downloadBytes(image)
+                if (bytes == null) {
+                    notify(completed, "تعذّر تحميل الصفحة ${page + 1}، ستتم إعادة المحاولة تلقائياً")
+                    return@withContext Result.retry()
+                }
+                file.writeBytes(bytes)
             }
             completed++
             val old = prefs.getString(key, "{}").orEmpty()
