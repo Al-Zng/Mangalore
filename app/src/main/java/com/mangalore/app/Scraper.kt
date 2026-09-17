@@ -67,9 +67,9 @@ object CookieStore {
 // ─────────────────────────────────────────────────────────────
 object Scraper {
 
-    private data class AniMetadata(
+    private data class DexMetadata(
         val author: String = "", val artist: String = "", val status: String = "",
-        val year: String = "", val format: String = "", val updatedAt: String = "", val description: String = "", val genres: List<String> = emptyList()
+        val year: String = "", val format: String = "", val updatedAt: String = "", val description: String = "", val cover: String = "", val genres: List<String> = emptyList()
     )
 
     private fun cleanMeta(v: String): String {
@@ -194,38 +194,32 @@ object Scraper {
         null
     }
 
-    private fun fetchAniList(title: String): AniMetadata? = runCatching {
-        val query = """
-            query(${"$"}search: String) { Page(perPage: 1) { media(search: ${"$"}search, type: MANGA) {
-              format countryOfOrigin updatedAt description(asHtml: false) status startDate { year } genres
-              staff(perPage: 15) { edges { role node { name { full } } } }
-            } } }
-        """.trimIndent()
-        val body = JSONObject().put("query", query)
-            .put("variables", JSONObject().put("search", title)).toString()
-            .toRequestBody("application/json; charset=utf-8".toMediaType())
-        val request = Request.Builder().url("https://graphql.anilist.co").post(body)
-            .header("Accept", "application/json").header("Content-Type", "application/json").build()
-        OkHttpClient.Builder().connectTimeout(12, TimeUnit.SECONDS).readTimeout(15, TimeUnit.SECONDS).build()
-            .newCall(request).execute().use { response ->
-                if (!response.isSuccessful) return@use null
-                val media = JSONObject(response.body?.string().orEmpty()).optJSONObject("data")
-                    ?.optJSONObject("Page")?.optJSONArray("media")?.optJSONObject(0) ?: return@use null
-                var author = ""; var artist = ""
-                val staff = media.optJSONObject("staff")?.optJSONArray("edges")
-                for (i in 0 until (staff?.length() ?: 0)) {
-                    val edge = staff?.optJSONObject(i) ?: continue
-                    val name = edge.optJSONObject("node")?.optJSONObject("name")?.optString("full").orEmpty()
-                    val role = edge.optString("role").lowercase()
-                    if (author.isBlank() && (role.contains("story") || role.contains("author") || role.contains("original"))) author = name
-                    if (artist.isBlank() && (role.contains("art") || role.contains("illustrat") || role.contains("draw"))) artist = name
+    private fun fetchMangaDex(title: String): DexMetadata? = runCatching {
+        val encoded = java.net.URLEncoder.encode(title, "UTF-8")
+        val request = Request.Builder().url("https://api.mangadex.org/manga?title=$encoded&limit=5&order[relevance]=desc&includes[]=author&includes[]=artist&includes[]=cover_art").build()
+        client().newCall(request).execute().use { response ->
+            if (!response.isSuccessful) return@use null
+            val data = JSONObject(response.body?.string().orEmpty()).optJSONArray("data")
+            val manga = data?.optJSONObject(0) ?: return@use null
+            val attr = manga.optJSONObject("attributes") ?: return@use null
+            val description = attr.optJSONObject("description")?.optString("ar")?.ifBlank { attr.optJSONObject("description")?.optString("en") }.orEmpty()
+            var author = ""; var artist = ""; var cover = ""
+            val rels = manga.optJSONArray("relationships")
+            for (i in 0 until (rels?.length() ?: 0)) {
+                val rel = rels?.optJSONObject(i) ?: continue
+                when (rel.optString("type")) {
+                    "author" -> if (author.isBlank()) author = rel.optJSONObject("attributes")?.optString("name").orEmpty()
+                    "artist" -> if (artist.isBlank()) artist = rel.optJSONObject("attributes")?.optString("name").orEmpty()
+                    "cover_art" -> cover = rel.optJSONObject("attributes")?.optString("fileName").orEmpty().let { file ->
+                        if (file.isBlank()) "" else "https://uploads.mangadex.org/covers/${manga.optString("id")}/$file.256.jpg"
+                    }
                 }
-                AniMetadata(author, artist, when (media.optString("status")) {
-                    "FINISHED" -> "مكتملة"; "RELEASING" -> "مستمرة"; "HIATUS" -> "متوقفة مؤقتاً"; "CANCELLED" -> "ملغاة"; else -> ""
-                }, media.optJSONObject("startDate")?.optInt("year", 0)?.takeIf { it > 0 }?.toString().orEmpty(),
-                    translateFormat(media.optString("format"), media.optString("countryOfOrigin")), media.optLong("updatedAt", 0).toString(), media.optString("description").trim(),
-                    media.optJSONArray("genres")?.let { a -> (0 until a.length()).map { translateGenre(a.optString(it)) } } ?: emptyList())
             }
+            val country = attr.optString("originalLanguage").uppercase()
+            DexMetadata(author, artist, when (attr.optString("status")) {
+                "completed" -> "مكتملة"; "ongoing" -> "مستمرة"; "hiatus" -> "متوقفة مؤقتاً"; "cancelled" -> "ملغاة"; else -> ""
+            }, attr.optString("year"), translateFormat("MANGA", country), attr.optString("updatedAt"), description, cover, emptyList())
+        }
     }.getOrNull()
 
     fun isCf(html: String) = html.contains("Just a moment") ||
@@ -305,26 +299,26 @@ object Scraper {
 
         val article = jsonLd()
         val publishedYear = article?.optString("datePublished")?.take(4).orEmpty()
-        val ani = fetchAniList(title)
+        val dex = fetchMangaDex(title)
 
         val siteStatus = trustedStatusOverride(url, title)
             ?: normalizeStatus(cleanMeta(metaVal("الحالة", "Status", "Durum")))
-        val status = ani?.status.orEmpty().ifEmpty { siteStatus }
+        val status = dex?.status.orEmpty().ifEmpty { siteStatus }
         val siteAuthor = cleanMeta(metaVal("المؤلف", "Author", "Yazar")).ifEmpty {
             cleanMeta(article?.optJSONObject("author")?.optString("name").orEmpty())
         }
-        val author = ani?.author.orEmpty().ifEmpty { siteAuthor }
-        val artist = ani?.artist.orEmpty().ifEmpty { cleanMeta(metaVal("الرسام", "Artist", "Çizer")) }
-        val year   = ani?.year.orEmpty().ifEmpty { cleanMeta(metaVal("سنة", "Released", "Year")).ifEmpty { publishedYear } }
+        val author = dex?.author.orEmpty().ifEmpty { siteAuthor }
+        val artist = dex?.artist.orEmpty().ifEmpty { cleanMeta(metaVal("الرسام", "Artist", "Çizer")) }
+        val year   = dex?.year.orEmpty().ifEmpty { cleanMeta(metaVal("سنة", "Released", "Year")).ifEmpty { publishedYear } }
         val siteOrigin = normalizeWorkType(cleanMeta(metaVal("النوع", "Type", "Tür")))
-        val origin = normalizeWorkType(ani?.format.orEmpty()).ifEmpty { siteOrigin }
+        val origin = normalizeWorkType(dex?.format.orEmpty()).ifEmpty { siteOrigin }
 
         // Description - clean of links/tags
         val siteDesc = doc.selectFirst(".description-summary .summary__content, .description-summary p, .manga-excerpt p")
             ?.text()?.trim().orEmpty().ifEmpty {
                 doc.selectFirst("meta[property=og:description]")?.attr("content")?.trim().orEmpty()
             }
-        val desc = siteDesc
+        val desc = siteDesc.ifBlank { dex?.description.orEmpty() }
 
         // Rating
         val rating = doc.selectFirst(".score.font-meta, .post-rating .score")?.text()?.trim() ?: ""
@@ -339,7 +333,7 @@ object Scraper {
             val chTitle = cleanBranding(a.text().trim())
             val date    = li.selectFirst(".chapter-release-date i, .chapter-release-date")
                 ?.text()?.trim().orEmpty().ifBlank {
-                    ani?.updatedAt?.toLongOrNull()?.takeIf { it >= 1_000_000_000L }?.toString().orEmpty()
+                    dex?.updatedAt.orEmpty()
                 }
             val num  = chTitle.replace(Regex("[^0-9.]"), "").trim()
             ChapterItem(
@@ -352,7 +346,7 @@ object Scraper {
 
         MangaDetail(
             title = cleanBranding(title), slug = slug,
-            coverUrl = coverThumb, coverFull = coverFull,
+            coverUrl = dex?.cover.orEmpty().ifBlank { coverThumb }, coverFull = dex?.cover.orEmpty().ifBlank { coverFull },
             url = url, genres = genres.map(::cleanBranding), status = cleanBranding(status),
             author = cleanBranding(author), artist = cleanBranding(artist),
             description = cleanBranding(desc), rating = cleanBranding(rating),
