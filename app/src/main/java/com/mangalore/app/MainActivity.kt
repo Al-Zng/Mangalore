@@ -1396,11 +1396,13 @@ private fun DetailScreen(
     var showListPicker by remember { mutableStateOf(false) }
     var customListNames by remember { mutableStateOf(CustomListsStore.names(context)) }
     var commentText by remember { mutableStateOf("") }
+    var replyTo by remember { mutableStateOf<CommentRecord?>(null) }
     var comments by remember { mutableStateOf(listOf<String>()) }
     var richComments by remember { mutableStateOf<List<CommentRecord>>(emptyList()) }
     var commentSpoiler by remember { mutableStateOf(false) }
     var reactions by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
     val visibleRemoteComments = richComments.filter { it.parentId == null }
+    val repliesByParent = richComments.filter { it.parentId != null }.groupBy { it.parentId }
     LaunchedEffect(AuthStore.userId) {
         if (AuthStore.hasSession()) runCatching { CloudStore.fetchCustomLists() }
             .onSuccess { customListNames = (customListNames + it.keys).distinct().sorted() }
@@ -1581,14 +1583,22 @@ private fun DetailScreen(
                             Box(Modifier.size(36.dp).clip(CircleShape)
                                 .background(accent.copy(.2f)).border(1.dp, accent.copy(.35f), CircleShape),
                                 Alignment.Center) {
-                                Image(painterResource(R.drawable.logo), "شعار مانجالور", Modifier.fillMaxSize().padding(5.dp), contentScale = ContentScale.Fit)
+                                when {
+                                    AuthStore.isOwner -> Image(painterResource(R.drawable.logo), "شعار مانجالور", Modifier.fillMaxSize().padding(5.dp), contentScale = ContentScale.Fit)
+                                    AuthStore.avatarUrl.isNotBlank() -> AsyncImage(AuthStore.avatarUrl, "صورة المستخدم", Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                                    else -> Icon(Icons.Default.Person, "صورة المستخدم", tint = TextSec)
+                                }
                             }
                             Text(AuthStore.displayName.ifBlank { "قارئ مانجالور" },
                                 color = TextSec, fontSize = 13.sp, fontWeight = FontWeight.Medium)
                         }
+                        if (replyTo != null) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Text("رد على ${replyTo?.name.orEmpty()}", color = accent, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                            TextButton({ replyTo = null }) { Text("إلغاء", color = TextSec, fontSize = 12.sp) }
+                        }
                         OutlinedTextField(
                             value = commentText, onValueChange = { commentText = it },
-                            placeholder = { Text("شارك رأيك بهذا العمل...", fontFamily = Font, color = TextDim) },
+                            placeholder = { Text(if (replyTo == null) "شارك رأيك بهذا العمل..." else "اكتب ردك...", fontFamily = Font, color = TextDim) },
                             modifier = Modifier.fillMaxWidth(), minLines = 6, maxLines = 8,
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedBorderColor = accent, unfocusedBorderColor = Border,
@@ -1609,10 +1619,11 @@ private fun DetailScreen(
                                     if (value.isNotEmpty()) {
                                         comments = comments + value
                                         commentText = ""
-                                        val optimistic = CommentRecord("local-${System.currentTimeMillis()}", AuthStore.userId, AuthStore.displayName.ifBlank { "قارئ مانجالور" }, AuthStore.avatarUrl, value, null, commentSpoiler, "", AuthStore.isOwner)
+                                        val parentId = replyTo?.id
+                                        val optimistic = CommentRecord("local-${System.currentTimeMillis()}", AuthStore.userId, AuthStore.displayName.ifBlank { "قارئ مانجالور" }, AuthStore.avatarUrl, value, parentId, commentSpoiler, "", AuthStore.isOwner)
                                         richComments = (richComments + optimistic).distinctBy { it.id }
                                         cloudScope.launch {
-                                            runCatching { CloudStore.addComment(d.url, d.slug, value, commentSpoiler) }.onSuccess {
+                                            runCatching { CloudStore.addComment(d.url, d.slug, value, commentSpoiler, parentId) }.onSuccess {
                                                 runCatching { CloudStore.fetchComments(d.url) }.getOrNull()?.let { fetched ->
                                                     val pending = richComments.filter { it.id.startsWith("local-") && it.content == value }
                                                     richComments = (fetched + pending).distinctBy { it.content + it.userId }
@@ -1620,6 +1631,7 @@ private fun DetailScreen(
                                             }
                                         }
                                         commentSpoiler = false
+                                        replyTo = null
                                         saveComments(context, d.url, comments)
                                         cloudScope.launch { runCatching { AuthStore.syncComments(d.url, comments) } }
                                     }
@@ -1723,10 +1735,22 @@ private fun DetailScreen(
                         else Text(comment.content, color = TextPri, fontSize = 15.sp, lineHeight = 24.sp)
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             val reaction = reactions[comment.id] ?: 0
+                            TextButton({ replyTo = comment }) { Text("رد", color = accent, fontSize = 11.sp) }
                             TextButton({ reactions = reactions + (comment.id to if (reaction == 1) 0 else 1) }) { Icon(Icons.Default.ThumbUp, "إعجاب", tint = if (reaction == 1) accent else TextSec, modifier = Modifier.size(17.dp)); Text("إعجاب", color = if (reaction == 1) accent else TextSec, fontSize = 11.sp) }
                             TextButton({ reactions = reactions + (comment.id to if (reaction == -1) 0 else -1) }) { Icon(Icons.Default.ThumbDown, "عدم إعجاب", tint = if (reaction == -1) Red else TextSec, modifier = Modifier.size(17.dp)); Text("عدم إعجاب", color = if (reaction == -1) Red else TextSec, fontSize = 11.sp) }
                         }
-                        if (comment.parentId != null) Text("↳ رد على تعليق", color = accent, fontSize = 11.sp)
+                        repliesByParent[comment.id].orEmpty().forEach { reply ->
+                            Row(Modifier.fillMaxWidth().padding(start = 18.dp).background(Surface3, RoundedCornerShape(12.dp)).padding(10.dp), verticalAlignment = Alignment.Top) {
+                                Box(Modifier.size(28.dp).clip(CircleShape).background(accent.copy(.15f)), Alignment.Center) {
+                                    if (reply.avatar.isNotBlank()) AsyncImage(reply.avatar, "صورة المستخدم", Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                                    else Icon(Icons.Default.Person, "صورة المستخدم", tint = TextSec, modifier = Modifier.size(17.dp))
+                                }
+                                Column(Modifier.padding(horizontal = 8.dp)) {
+                                    Text(reply.name.ifBlank { "قارئ مانجالور" }, color = TextPri, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                    Text(reply.content, color = TextSec, fontSize = 13.sp, lineHeight = 19.sp)
+                                }
+                            }
+                        }
                     }
                 }
             }

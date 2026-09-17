@@ -146,12 +146,14 @@ object AuthStore {
             avatarUrl = metadata?.optString("avatar_url").orEmpty()
                 .ifBlank { metadata?.optString("picture").orEmpty() }
                 .ifBlank { avatarUrl }
-            val obj = request("/rest/v1/profiles?id=eq.$userId&select=display_name,username", "GET", null, accessToken)
+            val obj = request("/rest/v1/profiles?id=eq.$userId&select=display_name,username,avatar_url", "GET", null, accessToken)
             val profileName = obj.optString("display_name").trim()
             if (profileName.isNotBlank()) displayName = profileName
             else if (displayName.isNotBlank()) {
                 request("/rest/v1/profiles?id=eq.$userId", "PATCH", JSONObject().put("display_name", displayName.trim()), accessToken)
             }
+            val profileAvatar = obj.optString("avatar_url").trim()
+            if (profileAvatar.isNotBlank()) avatarUrl = profileAvatar
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
                 .putString(NAME, displayName).putString(AVATAR, avatarUrl).putString(EMAIL, email).apply()
         }
@@ -176,7 +178,10 @@ object AuthStore {
 
     suspend fun syncAvatar(uri: String) {
         if (!hasSession()) return
-        request("/auth/v1/user", "PUT", JSONObject().put("data", JSONObject().put("avatar_url", uri.trim())), accessToken)
+        val clean = uri.trim()
+        request("/auth/v1/user", "PUT", JSONObject().put("data", JSONObject().put("avatar_url", clean)), accessToken)
+        // Comments read avatars from profiles, so keep the profile row in sync too.
+        request("/rest/v1/profiles?id=eq.$userId", "PATCH", JSONObject().put("avatar_url", clean), accessToken)
     }
 
     suspend fun loadComments(url: String): List<String> {

@@ -9,10 +9,15 @@ data class CustomList(val name: String, val items: List<MangaItem>)
 object CustomListsStore {
     private const val PREFS = "mangalore_custom_lists"
 
-    fun names(context: Context): List<String> = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).all.keys.sorted()
+    // Never share custom lists between accounts on the same device.
+    private fun prefs(context: Context) = context.getSharedPreferences(
+        "${PREFS}_${AuthStore.userId.ifBlank { "guest" }}", Context.MODE_PRIVATE
+    )
+
+    fun names(context: Context): List<String> = prefs(context).all.keys.sorted()
 
     fun get(context: Context, name: String): List<MangaItem> {
-        val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(name, "[]") ?: "[]"
+        val raw = prefs(context).getString(name, "[]") ?: "[]"
         val arr = runCatching { JSONArray(raw) }.getOrElse { JSONArray() }
         return (0 until arr.length()).mapNotNull { i ->
             val o = arr.optJSONObject(i) ?: return@mapNotNull null
@@ -23,23 +28,23 @@ object CustomListsStore {
     fun create(context: Context, name: String): Boolean {
         val clean = name.trim()
         if (clean.isBlank() || names(context).contains(clean)) return false
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(clean, "[]").apply()
+        prefs(context).edit().putString(clean, "[]").apply()
         return true
     }
 
-    fun delete(context: Context, name: String) { context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().remove(name).apply() }
+    fun delete(context: Context, name: String) { prefs(context).edit().remove(name).apply() }
 
     fun add(context: Context, name: String, item: MangaItem) {
         val items = get(context, name).filterNot { it.url == item.url } + item
         val arr = JSONArray()
         items.forEach { m -> arr.put(JSONObject().put("id", m.id).put("title", m.title).put("slug", m.slug).put("cover", m.coverUrl).put("full", m.coverFull).put("url", m.url)) }
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(name, arr.toString()).apply()
+        prefs(context).edit().putString(name, arr.toString()).apply()
     }
 
     fun remove(context: Context, name: String, url: String) {
-        val item = get(context, name).firstOrNull { it.url == url } ?: return
+        if (get(context, name).none { it.url == url }) return
         val arr = JSONArray()
-        get(context, name).filterNot { it.url == item.url }.forEach { m -> arr.put(JSONObject().put("id", m.id).put("title", m.title).put("slug", m.slug).put("cover", m.coverUrl).put("full", m.coverFull).put("url", m.url)) }
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(name, arr.toString()).apply()
+        get(context, name).filterNot { it.url == url }.forEach { m -> arr.put(JSONObject().put("id", m.id).put("title", m.title).put("slug", m.slug).put("cover", m.coverUrl).put("full", m.coverFull).put("url", m.url)) }
+        prefs(context).edit().putString(name, arr.toString()).apply()
     }
 }
