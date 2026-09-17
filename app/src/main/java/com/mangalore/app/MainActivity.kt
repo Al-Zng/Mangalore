@@ -2862,13 +2862,39 @@ private fun CustomListsScreen(accent: Color, onBack: () -> Unit, onPick: (MangaI
 @Composable
 private fun DownloadedMangaScreen(group: DownloadGroup, accent: Color, onBack: () -> Unit, onRead: (ChapterItem, MangaDetail) -> Unit) {
     val context = LocalContext.current
-    val chapters = group.chapterUrls.mapIndexed { index, url -> ChapterItem((index + 1).toString(), "", url, "") }
-    val manga = MangaDetail(group.title, group.key, group.cover, group.cover, group.mangaUrl, emptyList(), "", "", "", "", "", "", "", chapters)
+    var liveGroup by remember { mutableStateOf(group) }
+    LaunchedEffect(group.key) { while (true) { liveGroup = LocalDownloads.groups(context).firstOrNull { it.key == group.key } ?: liveGroup; delay(1000) } }
+    val chapters = liveGroup.chapterUrls.mapIndexed { index, url -> ChapterItem((index + 1).toString(), "", url, "") }
+    val manga = MangaDetail(liveGroup.title, liveGroup.key, liveGroup.cover, liveGroup.cover, liveGroup.mangaUrl, liveGroup.genres, liveGroup.status, liveGroup.author, liveGroup.artist, liveGroup.description, liveGroup.rating, liveGroup.releaseYear, liveGroup.origin, chapters)
+    val progress = if (liveGroup.total > 0) (liveGroup.done.toFloat() / liveGroup.total).coerceIn(0f, 1f) else 0f
     Column(Modifier.fillMaxSize()) {
-        TopBar(group.title, accent, onBack)
-        if (chapters.isEmpty()) EmptyState(Icons.Default.Download, "لا توجد فصول مكتملة", "أعد تنزيل الفصول من صفحة المانجا")
-        else LazyColumn(contentPadding = PaddingValues(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            item { Text("الفصول المحفوظة على الجهاز", color = TextSec, fontSize = 13.sp, modifier = Modifier.padding(bottom = 4.dp)) }
+        TopBar(liveGroup.title, accent, onBack)
+        LazyColumn(contentPadding = PaddingValues(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            item {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+                    AsyncImage(model = liveGroup.cover, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.size(112.dp, 164.dp).clip(RoundedCornerShape(14.dp)))
+                    Column(Modifier.padding(start = 14.dp).weight(1f)) {
+                        Text(liveGroup.title, color = TextPri, fontSize = 20.sp, fontWeight = FontWeight.Bold, fontFamily = Font)
+                        if (liveGroup.origin.isNotBlank()) Text(liveGroup.origin, color = accent, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp))
+                        if (liveGroup.author.isNotBlank()) Text("المؤلف: ${liveGroup.author}", color = TextSec, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
+                        if (liveGroup.artist.isNotBlank()) Text("الرسام: ${liveGroup.artist}", color = TextSec, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
+                        if (liveGroup.status.isNotBlank()) Text("الحالة: ${liveGroup.status}", color = TextSec, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
+                    }
+                }
+            }
+            item {
+                Surface(color = Surface2, shape = InputShape, border = BorderStroke(1.dp, Border), modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(14.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.DownloadDone, null, tint = accent); Text("تقدم التنزيل", color = TextPri, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f).padding(horizontal = 8.dp)); Text("${liveGroup.done} / ${liveGroup.total}", color = accent, fontSize = 13.sp) }
+                        LinearProgressIndicator(progress = { progress }, color = accent, trackColor = Surface3, modifier = Modifier.fillMaxWidth().padding(top = 10.dp))
+                        Text(if (liveGroup.done >= liveGroup.total && liveGroup.total > 0) "اكتمل التنزيل" else "يتم تنزيل الفصول في الخلفية…", color = TextSec, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
+                    }
+                }
+            }
+            if (liveGroup.description.isNotBlank()) item { Text(liveGroup.description, color = TextSec, fontSize = 13.sp, lineHeight = 21.sp) }
+            if (liveGroup.genres.isNotEmpty()) item { Text(liveGroup.genres.joinToString("  ·  "), color = accent, fontSize = 12.sp) }
+            item { Text("الفصول المحفوظة على الجهاز", color = TextSec, fontSize = 13.sp, modifier = Modifier.padding(top = 2.dp)) }
+            if (chapters.isEmpty()) item { EmptyState(Icons.Default.Download, "لا توجد فصول مكتملة", "أعد تنزيل الفصول من صفحة المانجا") }
             items(chapters, key = { it.url }) { chapter ->
                 val pages = LocalDownloads.localImages(context, chapter.url).size
                 Row(Modifier.fillMaxWidth().clip(InputShape).background(Surface2).clickable { onRead(chapter, manga) }.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {

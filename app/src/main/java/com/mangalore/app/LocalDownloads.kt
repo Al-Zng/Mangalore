@@ -11,8 +11,16 @@ import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
+import org.json.JSONObject
+import org.json.JSONArray
 
-data class DownloadGroup(val key: String, val title: String, val cover: String, val total: Int, val done: Int, val mangaUrl: String = "", val chapterUrls: List<String> = emptyList())
+data class DownloadGroup(
+    val key: String, val title: String, val cover: String, val total: Int, val done: Int,
+    val mangaUrl: String = "", val chapterUrls: List<String> = emptyList(),
+    val genres: List<String> = emptyList(), val status: String = "", val author: String = "",
+    val artist: String = "", val description: String = "", val rating: String = "",
+    val releaseYear: String = "", val origin: String = ""
+)
 
 object LocalDownloads {
     private const val PREFS = "mangalore_downloads"
@@ -23,7 +31,12 @@ object LocalDownloads {
         if (chapters.isEmpty()) return
         val key = manga.url.hashCode().toString()
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        prefs.edit().putString(key, "$key|${manga.title}|${manga.chapters.size}|0|${manga.coverUrl}|${manga.url}|${chapters.joinToString("§§") { it.url }}").apply()
+        val saved = JSONObject().put("key", key).put("title", manga.title).put("cover", manga.coverUrl)
+            .put("total", manga.chapters.size).put("done", 0).put("mangaUrl", manga.url)
+            .put("chapterUrls", JSONArray(chapters.map { it.url })).put("genres", JSONArray(manga.genres))
+            .put("status", manga.status).put("author", manga.author).put("artist", manga.artist)
+            .put("description", manga.description).put("rating", manga.rating).put("releaseYear", manga.releaseYear).put("origin", manga.origin)
+        prefs.edit().putString(key, saved.toString()).apply()
         val req = OneTimeWorkRequestBuilder<ChapterDownloadWorker>()
             .setInputData(workDataOf(
                 "manga" to manga.title,
@@ -40,11 +53,18 @@ object LocalDownloads {
     fun groups(context: Context): List<DownloadGroup> = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).all
         .filterKeys { !it.startsWith("chapter_") }
         .mapNotNull { (key, value) ->
-            val p = (value as? String)?.split("|") ?: return@mapNotNull null
+            val raw = value as? String ?: return@mapNotNull null
+            if (raw.trimStart().startsWith("{")) {
+                val j = runCatching { JSONObject(raw) }.getOrNull() ?: return@mapNotNull null
+                DownloadGroup(j.optString("key", key), j.optString("title"), j.optString("cover"), j.optInt("total"), j.optInt("done"), j.optString("mangaUrl"),
+                    (0 until j.optJSONArray("chapterUrls").length()).map { j.optJSONArray("chapterUrls").optString(it) }.filter { it.isNotBlank() },
+                    (0 until j.optJSONArray("genres").length()).map { j.optJSONArray("genres").optString(it) }, j.optString("status"), j.optString("author"), j.optString("artist"), j.optString("description"), j.optString("rating"), j.optString("releaseYear"), j.optString("origin"))
+            } else {
+            val p = raw.split("|")
             if (p.size >= 7) DownloadGroup(key, p[1], p[4], p[2].toIntOrNull() ?: 0, p[3].toIntOrNull() ?: 0, p[5], p[6].split("§§").filter { it.isNotBlank() })
             else if (p.size >= 5) DownloadGroup(key, p[1], p[4], p[2].toIntOrNull() ?: 0, p[3].toIntOrNull() ?: 0)
             else if (p.size >= 4) DownloadGroup(key, p[0], p.getOrNull(3).orEmpty(), p[1].toIntOrNull() ?: 0, p[2].toIntOrNull() ?: 0)
-            else null
+            else null }
         }
 
     fun localImages(context: Context, chapterUrl: String): List<String> {
@@ -83,10 +103,10 @@ class ChapterDownloadWorker(appContext: Context, params: WorkerParameters) : Cor
                     }
             }
             completed++
-            prefs.edit()
-                .putString("chapter_${url.hashCode()}", chapterDir.absolutePath)
-                .putString(key, "$key|$title|${urls.size}|$completed|$cover|${inputData.getString("mangaUrl").orEmpty()}|${urls.joinToString("§§")}")
-                .apply()
+            val old = prefs.getString(key, "{}").orEmpty()
+            val updated = if (old.trimStart().startsWith("{")) JSONObject(old).put("done", completed).toString()
+            else "$key|$title|${urls.size}|$completed|$cover|${inputData.getString("mangaUrl").orEmpty()}|${urls.joinToString("§§")}"
+            prefs.edit().putString("chapter_${url.hashCode()}", chapterDir.absolutePath).putString(key, updated).apply()
         }
         Result.success()
     }
