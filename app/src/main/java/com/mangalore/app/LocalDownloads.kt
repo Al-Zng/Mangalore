@@ -23,7 +23,7 @@ import androidx.core.app.NotificationCompat
 
 data class DownloadGroup(
     val key: String, val title: String, val cover: String, val total: Int, val done: Int,
-    val mangaUrl: String = "", val chapterUrls: List<String> = emptyList(),
+    val mangaUrl: String = "", val chapterUrls: List<String> = emptyList(), val chapterNames: List<String> = emptyList(),
     val genres: List<String> = emptyList(), val status: String = "", val author: String = "",
     val artist: String = "", val description: String = "", val rating: String = "",
     val releaseYear: String = "", val origin: String = ""
@@ -39,8 +39,8 @@ object LocalDownloads {
         val key = manga.url.hashCode().toString()
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val saved = JSONObject().put("key", key).put("title", manga.title).put("cover", manga.coverUrl)
-            .put("total", manga.chapters.size).put("done", 0).put("mangaUrl", manga.url)
-            .put("chapterUrls", JSONArray(chapters.map { it.url })).put("genres", JSONArray(manga.genres))
+            .put("total", chapters.size).put("done", 0).put("mangaUrl", manga.url)
+            .put("chapterUrls", JSONArray(chapters.map { it.url })).put("chapterNames", JSONArray(chapters.map { it.title })) .put("genres", JSONArray(manga.genres))
             .put("status", manga.status).put("author", manga.author).put("artist", manga.artist)
             .put("description", manga.description).put("rating", manga.rating).put("releaseYear", manga.releaseYear).put("origin", manga.origin)
         prefs.edit().putString(key, saved.toString()).apply()
@@ -64,9 +64,15 @@ object LocalDownloads {
             val raw = value as? String ?: return@mapNotNull null
             if (raw.trimStart().startsWith("{")) {
                 val j = runCatching { JSONObject(raw) }.getOrNull() ?: return@mapNotNull null
-                DownloadGroup(j.optString("key", key), j.optString("title"), j.optString("cover"), j.optInt("total"), j.optInt("done"), j.optString("mangaUrl"),
-                    (0 until j.optJSONArray("chapterUrls").length()).map { j.optJSONArray("chapterUrls").optString(it) }.filter { it.isNotBlank() },
-                    (0 until j.optJSONArray("genres").length()).map { j.optJSONArray("genres").optString(it) }, j.optString("status"), j.optString("author"), j.optString("artist"), j.optString("description"), j.optString("rating"), j.optString("releaseYear"), j.optString("origin"))
+                run {
+                    val urls = j.optJSONArray("chapterUrls") ?: JSONArray()
+                    val names = j.optJSONArray("chapterNames") ?: JSONArray()
+                    val genres = j.optJSONArray("genres") ?: JSONArray()
+                    DownloadGroup(j.optString("key", key), j.optString("title"), j.optString("cover"), j.optInt("total"), j.optInt("done"), j.optString("mangaUrl"),
+                        (0 until urls.length()).map { urls.optString(it) }.filter { it.isNotBlank() },
+                        (0 until names.length()).map { names.optString(it) },
+                        (0 until genres.length()).map { genres.optString(it) }, j.optString("status"), j.optString("author"), j.optString("artist"), j.optString("description"), j.optString("rating"), j.optString("releaseYear"), j.optString("origin"))
+                }
             } else {
             val p = raw.split("|")
             if (p.size >= 7) DownloadGroup(key, p[1], p[4], p[2].toIntOrNull() ?: 0, p[3].toIntOrNull() ?: 0, p[5], p[6].split("§§").filter { it.isNotBlank() })

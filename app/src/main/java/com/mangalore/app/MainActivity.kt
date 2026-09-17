@@ -566,7 +566,7 @@ private fun App(oauthTick: Int = 0) {
                         }
                         is Dest.History -> HistoryScreen(accent, hist, ::pop, { p -> push(Dest.Reader(p.manga.chapters[p.chapterIndex].url, "الفصل ${p.manga.chapters[p.chapterIndex].number}", p.manga, p.chapterIndex, p.page)) }) { hist = emptyList() }
                         is Dest.Downloads -> DownloadsScreen(accent, ::pop) { push(Dest.DownloadedManga(it)) }
-                        is Dest.DownloadedManga -> DownloadedMangaScreen(d.group, accent, ::pop) { chapter, manga -> push(Dest.Reader(chapter.url, "الفصل ${chapter.number}", manga, d.group.chapterUrls.indexOf(chapter.url), 1)) }
+                        is Dest.DownloadedManga -> DownloadedMangaScreen(d.group, accent, ::pop) { chapter, manga -> push(Dest.Reader(chapter.url, chapter.title, manga, d.group.chapterUrls.indexOf(chapter.url), 1)) }
                         is Dest.CustomLists -> CustomListsScreen(accent, ::pop) { push(Dest.Detail(it)) }
                         is Dest.Profile -> ProfileScreen(accent, ::pop)
                         is Dest.Settings -> SettingsScreen(
@@ -2010,7 +2010,7 @@ private fun ReaderScreen(
             else -> {
                 val readerContent: LazyListScope.() -> Unit = {
                 blocks.forEachIndexed { position, (index, images) ->
-                    item(key = "chapter-header-$index") { Box(Modifier.fillMaxWidth().background(Brush.horizontalGradient(listOf(accent.copy(.22f), accent.copy(.06f), Color.Transparent))).padding(horizontal = 16.dp, vertical = 14.dp)) { Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) { Box(Modifier.width(CoverWidthCh).height(CoverHeightCh).clip(RoundedCornerShape(8.dp))) { Img(manga.coverUrl, Modifier.fillMaxSize()); Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(.82f)))).padding(bottom = 3.dp, top = 8.dp), Alignment.Center) { Text(manga.chapters[index].number, color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold) } }; Column { Text("الفصل ${manga.chapters[index].number}", color = accent, fontSize = 15.sp, fontWeight = FontWeight.Bold); if (displayedChapterTitle.isNotEmpty()) Text(displayedChapterTitle, color = TextSec, fontSize = 12.sp) } } } }
+                    item(key = "chapter-header-$index") { Box(Modifier.fillMaxWidth().background(Brush.horizontalGradient(listOf(accent.copy(.22f), accent.copy(.06f), Color.Transparent))).padding(horizontal = 16.dp, vertical = 14.dp)) { Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) { Box(Modifier.width(CoverWidthCh).height(CoverHeightCh).clip(RoundedCornerShape(8.dp))) { Img(manga.coverUrl, Modifier.fillMaxSize()); Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(.82f)))).padding(bottom = 3.dp, top = 8.dp), Alignment.Center) { Text(manga.chapters[index].number, color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold) } }; Column { Text(if (manga.chapters[index].number.isBlank()) manga.chapters[index].title else "الفصل ${manga.chapters[index].number}", color = accent, fontSize = 15.sp, fontWeight = FontWeight.Bold); if (displayedChapterTitle.isNotEmpty()) Text(displayedChapterTitle, color = TextSec, fontSize = 12.sp) } } } }
                     itemsIndexed(images, key = { i, url -> "$index-$i-$url" }) { _, url ->
                         SubcomposeAsyncImage(model = ImageRequest.Builder(LocalContext.current).data(if (url.startsWith("/")) File(url) else url).addHeader("Referer", "https://mangalik.net/").addHeader("User-Agent", "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/124.0.0.0").apply { if (CookieStore.has()) addHeader("Cookie", CookieStore.cfCookies) }
                             .listener(onError = { _, result -> Log.e("MangaloreImages", "Image failed url=$url", result.throwable) })
@@ -2900,11 +2900,15 @@ private fun DownloadedMangaScreen(group: DownloadGroup, accent: Color, onBack: (
     val context = LocalContext.current
     var liveGroup by remember { mutableStateOf(group) }
     LaunchedEffect(group.key) { while (true) { liveGroup = LocalDownloads.groups(context).firstOrNull { it.key == group.key } ?: liveGroup; delay(1000) } }
-    val chapters = liveGroup.chapterUrls.mapIndexed { index, url -> ChapterItem((index + 1).toString(), "", url, "") }
+    val chapters = liveGroup.chapterUrls.mapIndexedNotNull { index, url ->
+        if (LocalDownloads.localImages(context, url).isNotEmpty()) ChapterItem("", liveGroup.chapterNames.getOrNull(index).orEmpty(), url, "") else null
+    }
     val manga = MangaDetail(liveGroup.title, liveGroup.key, liveGroup.cover, liveGroup.cover, liveGroup.mangaUrl, liveGroup.genres, liveGroup.status, liveGroup.author, liveGroup.artist, liveGroup.description, liveGroup.rating, liveGroup.releaseYear, liveGroup.origin, chapters)
     val progress = if (liveGroup.total > 0) (liveGroup.done.toFloat() / liveGroup.total).coerceIn(0f, 1f) else 0f
     Column(Modifier.fillMaxSize()) {
-        TopBar(liveGroup.title, accent, onBack)
+        Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 8.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onBack) { Icon(Icons.Default.ArrowForward, "رجوع", tint = TextPri) }
+        }
         LazyColumn(contentPadding = PaddingValues(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             item {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
@@ -2935,7 +2939,7 @@ private fun DownloadedMangaScreen(group: DownloadGroup, accent: Color, onBack: (
                 val pages = LocalDownloads.localImages(context, chapter.url).size
                 Row(Modifier.fillMaxWidth().clip(InputShape).background(Surface2).clickable { onRead(chapter, manga) }.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.MenuBook, null, tint = accent, modifier = Modifier.size(22.dp))
-                    Text("الفصل ${chapter.number}", color = TextPri, modifier = Modifier.weight(1f).padding(horizontal = 12.dp))
+                    Text(chapter.title.ifBlank { "فصل محمّل" }, color = TextPri, modifier = Modifier.weight(1f).padding(horizontal = 12.dp), maxLines = 2, overflow = TextOverflow.Ellipsis)
                     Text("$pages صفحة", color = TextSec, fontSize = 12.sp)
                     Icon(Icons.Default.ChevronLeft, null, tint = TextDim)
                 }
