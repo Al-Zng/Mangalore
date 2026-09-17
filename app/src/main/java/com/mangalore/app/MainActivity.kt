@@ -1726,7 +1726,11 @@ private fun DetailScreen(
                                     if (value.isNotEmpty()) {
                                         comments = comments + value
                                         commentText = ""
-                                        cloudScope.launch { runCatching { CloudStore.addComment(d.url, d.slug, value, commentSpoiler) }.onSuccess { runCatching { richComments = CloudStore.fetchComments(d.url) } } }
+                                        cloudScope.launch {
+                                            runCatching { CloudStore.addComment(d.url, d.slug, value, commentSpoiler) }.onSuccess {
+                                                runCatching { CloudStore.fetchComments(d.url) }.getOrNull()?.takeIf { it.isNotEmpty() }?.let { richComments = it }
+                                            }
+                                        }
                                         commentSpoiler = false
                                         saveComments(context, d.url, comments)
                                         cloudScope.launch { runCatching { AuthStore.syncComments(d.url, comments) } }
