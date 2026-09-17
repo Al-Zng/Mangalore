@@ -367,7 +367,7 @@ object Scraper {
 
         MangaDetail(
             title = cleanBranding(title), slug = slug,
-            coverUrl = dex?.cover.orEmpty().ifBlank { coverThumb }, coverFull = dex?.cover.orEmpty().ifBlank { coverFull },
+            coverUrl = coverThumb, coverFull = coverFull,
             url = url, genres = genres.map(::cleanBranding), status = cleanBranding(status),
             author = cleanBranding(author), artist = cleanBranding(artist),
             description = cleanBranding(desc), rating = cleanBranding(rating),
