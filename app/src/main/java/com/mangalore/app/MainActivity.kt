@@ -610,8 +610,7 @@ private fun App(oauthTick: Int = 0) {
                     CfProbe(
                         onChallenge = { showCf = true },
                         onSolved = { cookies ->
-                            CookieStore.cfCookies = cookies
-                            CookieStore.cfSolved = true
+                            CookieStore.save(context, cookies)
                             readerRefresh++
                         }
                     )
@@ -651,7 +650,7 @@ private fun App(oauthTick: Int = 0) {
                 // ── CF Popup ──────────────────────────────────
                 if (showCf) {
                     CfDialog(
-                        onSolved = { c -> CookieStore.cfCookies = c; CookieStore.cfSolved = true
+                        onSolved = { c -> CookieStore.save(context, c)
                             showCf = false; readerRefresh++; toast = "✓ تم التحقق بنجاح" },
                         onSkip   = { showCf = false }
                     )
@@ -717,13 +716,6 @@ private fun HiddenCookieWebView(url: String, onReady: (String) -> Unit) {
                     }
                 }
                 loadUrl(url)
-                Handler(Looper.getMainLooper()).postDelayed({
-                    if (delivered.compareAndSet(false, true)) {
-                        val cookies = CookieManager.getInstance().getCookie("https://mangalik.net").orEmpty()
-                        CookieManager.getInstance().flush()
-                        onReady(cookies)
-                    }
-                }, 20_000L)
             }
             webView
         },
@@ -1263,9 +1255,10 @@ private fun SearchScreen(accent: Color, onBack: () -> Unit, onPick: (MangaItem) 
     var res     by remember { mutableStateOf<List<MangaItem>>(emptyList()) }
     var loading by remember { mutableStateOf(false) }
     val scope   = rememberCoroutineScope()
-    val cats    = listOf("أكشن","رومانسية","غموض","إثارة","كوميديا","دراما","فنون قتالية",
-        "خيال","خيال علمي","تناسخ","سحر","مغامرة","رعب","ترقي","نظام")
+    var cats    by remember { mutableStateOf<List<MangaGenre>>(emptyList()) }
     var activeCat by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(Unit) { cats = Scraper.fetchGenres() }
 
     fun search(query: String) {
         if (query.isBlank()) return
@@ -1302,12 +1295,15 @@ private fun SearchScreen(accent: Color, onBack: () -> Unit, onPick: (MangaItem) 
                 )
                 LazyRow(contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
                     horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                    items(cats) { cat ->
-                        val sel = activeCat == cat
+                    items(cats, key = { it.url }) { cat ->
+                        val sel = activeCat == cat.url
                         FilterChip(sel,
-                            { activeCat = if (sel) null else cat
-                              if (!sel) search(cat) else { res = emptyList(); sub = "" } },
-                            label = { Text(cat, fontSize = 12.sp, fontFamily = Font) },
+                            { activeCat = if (sel) null else cat.url
+                              if (!sel) {
+                                  sub = cat.name; loading = true
+                                  scope.launch { res = Scraper.fetchGenre(cat.url); loading = false }
+                              } else { res = emptyList(); sub = "" } },
+                            label = { Text(cat.name, fontSize = 12.sp, fontFamily = Font) },
                             colors = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = accent, selectedLabelColor = Color.White,
                                 containerColor = Surface3, labelColor = TextSec),

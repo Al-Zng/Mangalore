@@ -53,6 +53,8 @@ data class ChapterItem(
     val date: String
 )
 
+data class MangaGenre(val name: String, val url: String)
+
 // ─────────────────────────────────────────────────────────────
 // COOKIE STORE
 // ─────────────────────────────────────────────────────────────
@@ -165,6 +167,28 @@ object Scraper {
     // Madara ordering option. Keeping it separate from allUrl prevents the two
     // screens from returning the same default-sorted cards.
     fun latestUrl(page: Int = 1) = archiveUrl(page, "latest")
+
+    fun genreUrl(url: String, page: Int = 1): String {
+        val base = url.trimEnd('/')
+        return if (page <= 1) "$base/" else "$base/page/$page/"
+    }
+
+    suspend fun fetchGenres(): List<MangaGenre> = withContext(Dispatchers.IO) {
+        val html = get("$BASE/manga/") ?: return@withContext emptyList()
+        if (isCf(html)) return@withContext emptyList()
+        Jsoup.parse(html).select("a[href*='/manga-genre/']")
+            .mapNotNull { a ->
+                val url = a.attr("href").trim().ifBlank { return@mapNotNull null }
+                val name = a.clone().select("span.count").remove().text().trim().ifBlank { a.text().trim() }
+                if (name.isBlank()) null else MangaGenre(cleanBranding(name), url)
+            }.distinctBy { it.url }
+    }
+
+    suspend fun fetchGenre(url: String, page: Int = 1): List<MangaItem> = withContext(Dispatchers.IO) {
+        val html = get(genreUrl(url, page)) ?: return@withContext emptyList()
+        if (isCf(html)) return@withContext emptyList()
+        parseMangaList(Jsoup.parse(html))
+    }
 
     suspend fun fetchAll(page: Int = 1): List<MangaItem> = withContext(Dispatchers.IO) {
         val html = get(allUrl(page)) ?: return@withContext emptyList()
@@ -288,13 +312,9 @@ object Scraper {
         val html = get(searchUrl(query)) ?: return@withContext emptyList()
         if (isCf(html)) return@withContext emptyList()
         val doc = Jsoup.parse(html)
-        // Search results use c-tabs-item structure
-        val searchItems = doc.select(".c-tabs-item .c-image-hover, .tab-thumb-wrap")
-        if (searchItems.isNotEmpty()) {
-            parseSearchResults(doc)
-        } else {
-            parseMangaList(doc)
-        }
+        // Search pages use the same manga cards as /manga/ on the current Madara theme.
+        // Prefer the full card parser so all matching cards are returned, not only the first thumbnail.
+        parseMangaList(doc).ifEmpty { parseSearchResults(doc) }
     }
 
     // ── Manga detail ──────────────────────────────────────────
