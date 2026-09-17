@@ -194,6 +194,7 @@ private sealed class Dest {
     data class DownloadedManga(val group: DownloadGroup) : Dest()
     object CustomLists : Dest()
     object Profile : Dest()
+    object Admin : Dest()
     object Settings : Dest()
     data class Detail(val item: MangaItem) : Dest()
     data class DetailFull(val d: MangaDetail) : Dest()
@@ -573,6 +574,7 @@ private fun App(oauthTick: Int = 0) {
                         is Dest.DownloadedManga -> DownloadedMangaScreen(d.group, accent, ::pop) { chapter, manga -> push(Dest.Reader(chapter.url, chapter.title, manga, d.group.chapterUrls.indexOf(chapter.url), 1)) }
                         is Dest.CustomLists -> CustomListsScreen(accent, ::pop) { push(Dest.Detail(it)) }
                         is Dest.Profile -> ProfileScreen(accent, ::pop)
+                        is Dest.Admin -> AdminScreen(accent, ::pop)
                         is Dest.Settings -> SettingsScreen(
                             accent, amoled,
                             { amoled = it; settingsPrefs.edit().putBoolean("amoled", it).apply() },
@@ -642,6 +644,7 @@ private fun App(oauthTick: Int = 0) {
                             "downloads" -> { if (cur !is Dest.Downloads) push(Dest.Downloads) else drawer = false }
                             "custom" -> { if (cur !is Dest.CustomLists) push(Dest.CustomLists) else drawer = false }
                             "profile"  -> { if (cur !is Dest.Profile)  push(Dest.Profile) else drawer = false }
+                            "admin"    -> { if (AuthStore.isOwner) push(Dest.Admin) else drawer = false }
                             "settings" -> { if (cur !is Dest.Settings) push(Dest.Settings) else drawer = false }
                         }
                     }
@@ -1505,8 +1508,11 @@ private fun DetailScreen(
     var showListPicker by remember { mutableStateOf(false) }
     var commentText by remember { mutableStateOf("") }
     var comments by remember { mutableStateOf(listOf<String>()) }
+    var richComments by remember { mutableStateOf<List<CommentRecord>>(emptyList()) }
+    var commentSpoiler by remember { mutableStateOf(false) }
     LaunchedEffect(d.url) {
         comments = readSavedComments(context, d.url)
+        runCatching { CloudStore.fetchComments(d.url) }.onSuccess { richComments = it }
         runCatching { AuthStore.loadComments(d.url) }.onSuccess { remote ->
             if (remote.isNotEmpty()) {
                 comments = remote
@@ -1689,7 +1695,7 @@ private fun DetailScreen(
                         OutlinedTextField(
                             value = commentText, onValueChange = { commentText = it },
                             placeholder = { Text("شارك رأيك بهذا العمل...", fontFamily = Font, color = TextDim) },
-                            modifier = Modifier.fillMaxWidth(), maxLines = 4,
+                            modifier = Modifier.fillMaxWidth(), minLines = 6, maxLines = 8,
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedBorderColor = accent, unfocusedBorderColor = Border,
                                 focusedTextColor = TextPri, unfocusedTextColor = TextPri,
@@ -1697,6 +1703,10 @@ private fun DetailScreen(
                             ),
                             shape = InputShape
                         )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(checked = commentSpoiler, onCheckedChange = { commentSpoiler = it }, colors = CheckboxDefaults.colors(checkedColor = Color.White, checkmarkColor = Color.Black))
+                            Text("يحتوي على حرق", color = TextSec, fontSize = 12.sp)
+                        }
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                             Button(
                                 enabled = commentText.isNotBlank(),
@@ -1705,6 +1715,8 @@ private fun DetailScreen(
                                     if (value.isNotEmpty()) {
                                         comments = comments + value
                                         commentText = ""
+                                        cloudScope.launch { runCatching { CloudStore.addComment(d.url, d.slug, value, commentSpoiler) }.onSuccess { runCatching { richComments = CloudStore.fetchComments(d.url) } } }
+                                        commentSpoiler = false
                                         saveComments(context, d.url, comments)
                                         cloudScope.launch { runCatching { AuthStore.syncComments(d.url, comments) } }
                                     }
@@ -1778,6 +1790,20 @@ private fun DetailScreen(
                         }
                         // Comment body
                         Text(comment, color = TextPri, fontSize = 14.sp, lineHeight = 22.sp)
+                    }
+                }
+            }
+            items(richComments, key = { it.id }) { comment ->
+                var revealed by remember(comment.id) { mutableStateOf(!comment.spoiler) }
+                Surface(color = Surface2, shape = RoundedCornerShape(18.dp), modifier = Modifier.padding(horizontal = 14.dp, vertical = 5.dp).fillMaxWidth()) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) { Text(comment.name.ifBlank { "قارئ مانجالور" }, color = TextPri, fontWeight = FontWeight.SemiBold); Text("تعليق مجتمع", color = TextDim, fontSize = 10.sp) }
+                            if (comment.userId == AuthStore.userId || AuthStore.isOwner) IconButton({ cloudScope.launch { runCatching { CloudStore.deleteComment(comment.id) }; richComments = CloudStore.fetchComments(d.url) } }) { Icon(Icons.Default.DeleteOutline, "حذف التعليق", tint = Red) }
+                        }
+                        if (comment.spoiler && !revealed) Button({ revealed = true }, colors = ButtonDefaults.buttonColors(containerColor = Color.White), shape = ButtonShape) { Text("إظهار الحرق", color = Color.Black) }
+                        else Text(comment.content, color = TextPri, fontSize = 15.sp, lineHeight = 24.sp)
+                        if (comment.parentId != null) Text("↳ رد على تعليق", color = accent, fontSize = 11.sp)
                     }
                 }
             }
@@ -2352,23 +2378,28 @@ private fun ProfileScreen(accent: Color, onBack: () -> Unit) {
                         horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                         Box(
                             Modifier.size(70.dp).clip(RoundedCornerShape(18.dp))
-                                .background(Surface3).border(1.dp, Border, RoundedCornerShape(18.dp))
-                                .clickable { avatarPicker.launch("image/*") }, Alignment.Center
+                                .background(if (AuthStore.isOwner) Color.Transparent else Surface3)
+                                .then(if (AuthStore.isOwner) Modifier else Modifier.border(1.dp, Border, RoundedCornerShape(18.dp)))
+                                .clickable { if (!AuthStore.isOwner) avatarPicker.launch("image/*") }, Alignment.Center
                         ) {
-                            if (avatarUrl.isNotBlank()) AsyncImage(
+                            if (AuthStore.isOwner) Image(painterResource(R.drawable.logo), "شعار المالك", contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                            else if (avatarUrl.isNotBlank()) AsyncImage(
                                 model = avatarUrl, contentDescription = "صورة المستخدم",
                                 contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()
                             ) else Text(
                                 displayName.firstOrNull()?.uppercase() ?: "م",
                                 color = accent, fontSize = 30.sp, fontWeight = FontWeight.Bold
                             )
-                            Box(Modifier.align(Alignment.BottomEnd).size(22.dp).background(Color.Black.copy(.55f), CircleShape), Alignment.Center) {
+                            if (!AuthStore.isOwner) Box(Modifier.align(Alignment.BottomEnd).size(22.dp).background(Color.Black.copy(.55f), CircleShape), Alignment.Center) {
                                 Icon(Icons.Default.CameraAlt, null, tint = Color.White, modifier = Modifier.size(13.dp))
                             }
                         }
                         Column(Modifier.weight(1f)) {
-                            Text(displayName, color = TextPri, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                            Text("عضو في مانجالور", color = TextSec, fontSize = 12.sp)
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                                Text(displayName, color = TextPri, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                                if (AuthStore.isOwner) Icon(Icons.Default.Verified, "حساب موثق", tint = Color(0xFF4DA3FF), modifier = Modifier.size(19.dp))
+                            }
+                            Text(if (AuthStore.isOwner) "المطور والمالك" else "عضو في مانجالور", color = if (AuthStore.isOwner) Color(0xFF4DA3FF) else TextSec, fontSize = 12.sp)
                         }
                         // Edit name button
                         IconButton(onClick = { nameInput = AuthStore.displayName; editNameDialog = true },
@@ -2502,6 +2533,34 @@ private fun ProfileStat(label: String, value: String, modifier: Modifier) {
     Column(modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Text(value, color = TextPri, fontSize = 24.sp, fontWeight = FontWeight.Bold)
         Text(label, color = TextSec, fontSize = 11.sp)
+    }
+}
+
+@Composable
+private fun AdminScreen(accent: Color, onBack: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    var users by remember { mutableStateOf<List<AdminUser>>(emptyList()) }
+    var loading by remember { mutableStateOf(true) }
+    var notice by remember { mutableStateOf("") }
+    fun refresh() { scope.launch { loading = true; runCatching { CloudStore.adminUsers() }.onSuccess { users = it }.onFailure { notice = it.message.orEmpty() }; loading = false } }
+    LaunchedEffect(Unit) { refresh() }
+    Column(Modifier.fillMaxSize()) {
+        TopBar("لوحة الإدارة", accent, onBack)
+        if (notice.isNotBlank()) Text(notice, color = Red, modifier = Modifier.padding(16.dp))
+        if (loading) Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator(color = accent) }
+        else LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            item { Text("إدارة الحسابات", color = TextPri, fontSize = 19.sp, fontWeight = FontWeight.Bold); Text("${users.size} حساب", color = TextSec, fontSize = 12.sp) }
+            items(users, key = { it.id }) { user ->
+                Surface(color = Surface2, shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, Border), modifier = Modifier.fillMaxWidth()) {
+                    Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Box(Modifier.size(44.dp).clip(CircleShape).background(Surface3), Alignment.Center) { if (user.avatar.isNotBlank()) AsyncImage(user.avatar, null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop) else Icon(Icons.Default.Person, null, tint = TextSec) }
+                        Column(Modifier.weight(1f)) { Text(user.name.ifBlank { "بدون اسم" }, color = TextPri, fontWeight = FontWeight.SemiBold); Text(user.email, color = TextSec, fontSize = 11.sp); if (user.banned) Text("محظور", color = Red, fontSize = 11.sp) }
+                        TextButton(onClick = { scope.launch { runCatching { CloudStore.adminSetBanned(user.id, !user.banned) }; refresh() } }) { Text(if (user.banned) "إلغاء الحظر" else "حظر", color = if (user.banned) Green else Red) }
+                        IconButton(onClick = { scope.launch { runCatching { CloudStore.adminDeleteUser(user.id) }; refresh() } }) { Icon(Icons.Default.DeleteForever, "حذف الحساب", tint = Red) }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -2702,15 +2761,19 @@ private fun Drawer(accent:Color, cur:Dest, onClose:()->Unit, onNav:(String)->Uni
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            Box(Modifier.size(48.dp).clip(CircleShape).background(Surface3), Alignment.Center) {
-                                if (AuthStore.avatarUrl.isNotBlank()) AsyncImage(
+                            Box(Modifier.size(48.dp).clip(CircleShape).background(if (AuthStore.isOwner) Color.Transparent else Surface3), Alignment.Center) {
+                                if (AuthStore.isOwner) Image(painterResource(R.drawable.logo), "شعار المالك", contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                                else if (AuthStore.avatarUrl.isNotBlank()) AsyncImage(
                                     model = AuthStore.avatarUrl, contentDescription = "صورة المستخدم",
                                     contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()
                                 ) else Icon(Icons.Default.Person, null, tint = TextSec, modifier = Modifier.size(28.dp))
                             }
                             Column(Modifier.weight(1f)) {
-                                Text(AuthStore.displayName.ifBlank { "قارئ مانجالور" }, color = TextPri, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                                Text("الملف الشخصي", color = TextSec, fontSize = 11.sp)
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Text(AuthStore.displayName.ifBlank { "قارئ مانجالور" }, color = TextPri, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                                    if (AuthStore.isOwner) Icon(Icons.Default.Verified, "موثق", tint = Color(0xFF4DA3FF), modifier = Modifier.size(16.dp))
+                                }
+                                Text(if (AuthStore.isOwner) "المطور والمالك" else "الملف الشخصي", color = if (AuthStore.isOwner) Color(0xFF4DA3FF) else TextSec, fontSize = 11.sp)
                             }
                         }
                     }
@@ -2727,6 +2790,7 @@ private fun Drawer(accent:Color, cur:Dest, onClose:()->Unit, onNav:(String)->Uni
                     item { DItem("التنزيلات",    Icons.Default.Download,      "downloads", cur is Dest.Downloads, onNav) }
                     item { DItem("قوائمي",        Icons.Default.PlaylistPlay,   "custom",    cur is Dest.CustomLists, onNav) }
                     item { DItem("الملف الشخصي", Icons.Default.Person,        "profile",  cur is Dest.Profile,  onNav) }
+                    if (AuthStore.isOwner) item { DItem("لوحة الإدارة", Icons.Default.AdminPanelSettings, "admin", cur is Dest.Admin, onNav) }
                     item { Spacer(Modifier.height(8.dp)); HorizontalDivider(color=Border) }
                     item { DSec("أخرى", accent) }
                     item { DItem("الإعدادات",    Icons.Default.Settings,      "settings", cur is Dest.Settings, onNav) }
@@ -2868,7 +2932,7 @@ private fun SpringCard(onClick:()->Unit, content:@Composable ()->Unit) {
             Text(title, color=TextPri, fontSize=15.sp)
             if (sub.isNotBlank()) Text(sub, color=TextSec, fontSize=12.sp)
         }
-        Switch(checked, on, colors=SwitchDefaults.colors(checkedThumbColor=Color.White, checkedTrackColor=Accent))
+        Switch(checked, on, colors=SwitchDefaults.colors(checkedThumbColor=Color.Black, checkedTrackColor=Color.White, uncheckedThumbColor=TextSec, uncheckedTrackColor=Surface3))
     }
 }
 

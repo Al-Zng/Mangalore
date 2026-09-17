@@ -11,6 +11,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 
 object AuthStore {
+    const val OWNER_EMAIL = "mangalore.support.ar@gmail.com"
     private const val BASE = "https://ifczsjsqazlnogmyomsk.supabase.co"
     private const val KEY = "sb_publishable_HA8TWsQQG8IjQHko1JVwJA_IHFgUAk-"
     private const val PREFS = "mangalore_auth"
@@ -19,6 +20,7 @@ object AuthStore {
     private const val USER_ID = "user_id"
     private const val NAME = "display_name"
     private const val AVATAR = "avatar_url"
+    private const val EMAIL = "email"
     private val jsonType = "application/json; charset=utf-8".toMediaType()
     private val http = OkHttpClient()
 
@@ -30,6 +32,9 @@ object AuthStore {
         private set
     var avatarUrl: String = ""
         private set
+    var email: String = ""
+        private set
+    val isOwner: Boolean get() = email.equals(OWNER_EMAIL, ignoreCase = true)
 
     fun load(context: Context) {
         val p = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -37,6 +42,7 @@ object AuthStore {
         userId = p.getString(USER_ID, "").orEmpty()
         displayName = p.getString(NAME, "").orEmpty()
         avatarUrl = p.getString(AVATAR, "").orEmpty()
+        email = p.getString(EMAIL, "").orEmpty()
     }
 
     fun hasSession() = accessToken.isNotBlank() && userId.isNotBlank()
@@ -71,13 +77,14 @@ object AuthStore {
         val refresh = params["refresh_token"].orEmpty()
         val user = request("/auth/v1/user", "GET", null, token)
         userId = user.optString("id")
+        email = user.optString("email").trim()
         displayName = user.optJSONObject("user_metadata")?.optString("display_name")
             ?.ifBlank { user.optJSONObject("user_metadata")?.optString("full_name") }
             ?.ifBlank { user.optJSONObject("user_metadata")?.optString("name") }
             .orEmpty()
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putString(ACCESS, accessToken).putString(REFRESH, refresh)
-            .putString(USER_ID, userId).putString(NAME, displayName).apply()
+            .putString(USER_ID, userId).putString(NAME, displayName).putString(EMAIL, email).apply()
         fetchProfile(context)
     }
 
@@ -89,9 +96,10 @@ object AuthStore {
         accessToken = obj.optString("access_token")
         val nextUserId = obj.optJSONObject("user")?.optString("id").orEmpty()
         userId = nextUserId.ifBlank { obj.optString("user_id").ifBlank { userId } }
+        email = obj.optJSONObject("user")?.optString("email").orEmpty().ifBlank { email }
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putString(ACCESS, accessToken).putString(REFRESH, obj.optString("refresh_token").ifBlank { previousRefresh })
-            .putString(USER_ID, userId).putString(NAME, displayName).apply()
+            .putString(USER_ID, userId).putString(NAME, displayName).putString(EMAIL, email).apply()
     }
 
     private suspend fun request(path: String, method: String, body: JSONObject?, token: String = ""): JSONObject = withContext(Dispatchers.IO) {
@@ -133,6 +141,7 @@ object AuthStore {
     private suspend fun fetchProfile(context: Context) {
         runCatching {
             val user = request("/auth/v1/user", "GET", null, accessToken)
+            email = user.optString("email").trim()
             val metadata = user.optJSONObject("user_metadata")
             avatarUrl = metadata?.optString("avatar_url").orEmpty()
                 .ifBlank { metadata?.optString("picture").orEmpty() }
@@ -144,7 +153,7 @@ object AuthStore {
                 request("/rest/v1/profiles?id=eq.$userId", "PATCH", JSONObject().put("display_name", displayName.trim()), accessToken)
             }
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-                .putString(NAME, displayName).putString(AVATAR, avatarUrl).apply()
+                .putString(NAME, displayName).putString(AVATAR, avatarUrl).putString(EMAIL, email).apply()
         }
     }
 
@@ -198,7 +207,7 @@ object AuthStore {
     }
 
     fun signOut(context: Context) {
-        accessToken = ""; userId = ""; displayName = ""; avatarUrl = ""
+        accessToken = ""; userId = ""; displayName = ""; avatarUrl = ""; email = ""
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().apply()
     }
 }

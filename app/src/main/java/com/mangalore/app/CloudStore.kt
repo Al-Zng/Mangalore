@@ -9,6 +9,9 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 
+data class AdminUser(val id: String, val email: String, val name: String, val avatar: String, val createdAt: String, val banned: Boolean)
+data class CommentRecord(val id: String, val userId: String, val name: String, val content: String, val parentId: String?, val spoiler: Boolean, val createdAt: String)
+
 object CloudStore {
     private const val BASE = "https://ifczsjsqazlnogmyomsk.supabase.co"
     private const val KEY = "sb_publishable_HA8TWsQQG8IjQHko1JVwJA_IHFgUAk-"
@@ -24,6 +27,39 @@ object CloudStore {
             if (!r.isSuccessful) error("Supabase request failed: ${r.code}")
             text
         }
+    }
+
+    suspend fun adminUsers(): List<AdminUser> {
+        if (!AuthStore.isOwner) return emptyList()
+        val arr = JSONArray(call("/rest/v1/rpc/admin_list_users", "POST", "{}"))
+        return (0 until arr.length()).mapNotNull { i -> arr.optJSONObject(i)?.let { o -> AdminUser(o.optString("user_id"), o.optString("email"), o.optString("display_name"), o.optString("avatar_url"), o.optString("created_at"), o.optBoolean("is_banned")) } }
+    }
+
+    suspend fun adminSetBanned(userId: String, banned: Boolean) {
+        if (!AuthStore.isOwner) return
+        call("/rest/v1/rpc/admin_set_user_banned", "POST", JSONObject().put("target_user", userId).put("should_ban", banned).put("ban_reason", "إشراف مانجالور").toString())
+    }
+
+    suspend fun adminDeleteUser(userId: String) {
+        if (!AuthStore.isOwner) return
+        call("/rest/v1/rpc/admin_delete_user", "POST", JSONObject().put("target_user", userId).toString())
+    }
+
+    suspend fun fetchComments(mangaUrl: String): List<CommentRecord> {
+        val encoded = java.net.URLEncoder.encode(mangaUrl, "UTF-8")
+        val arr = JSONArray(call("/rest/v1/comments?manga_url=eq.$encoded&select=id,user_id,content,parent_id,is_spoiler,created_at&order=created_at.asc", "GET"))
+        return (0 until arr.length()).mapNotNull { i -> arr.optJSONObject(i)?.let { o -> CommentRecord(o.optString("id"), o.optString("user_id"), "", o.optString("content"), o.optString("parent_id").ifBlank { null }, o.optBoolean("is_spoiler"), o.optString("created_at")) } }
+    }
+
+    suspend fun addComment(mangaUrl: String, mangaSlug: String, content: String, spoiler: Boolean, parentId: String? = null) {
+        if (!AuthStore.hasSession()) return
+        val body = JSONObject().put("user_id", AuthStore.userId).put("manga_url", mangaUrl).put("manga_slug", mangaSlug).put("content", content.trim()).put("is_spoiler", spoiler).apply { if (parentId != null) put("parent_id", parentId) }
+        call("/rest/v1/comments", "POST", body.toString())
+    }
+
+    suspend fun deleteComment(id: String) {
+        if (!AuthStore.hasSession()) return
+        call("/rest/v1/comments?id=eq.${java.net.URLEncoder.encode(id, "UTF-8")}", "DELETE")
     }
 
     suspend fun fetchLibrary(): List<MangaItem> {
