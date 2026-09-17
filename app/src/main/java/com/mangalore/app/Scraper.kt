@@ -200,18 +200,39 @@ object Scraper {
         client().newCall(request).execute().use { response ->
             if (!response.isSuccessful) return@use null
             val data = JSONObject(response.body?.string().orEmpty()).optJSONArray("data")
-            val manga = data?.optJSONObject(0) ?: return@use null
-            val attr = manga.optJSONObject("attributes") ?: return@use null
+            if (data == null || data.length() == 0) return@use null
+            fun norm(s: String) = s.lowercase().replace(Regex("[^\\p{L}\\p{N}]"), "")
+            val wanted = norm(title)
+            var manga: JSONObject? = null
+            var bestScore = -1
+            for (i in 0 until data.length()) {
+                val candidate = data.optJSONObject(i) ?: continue
+                val a = candidate.optJSONObject("attributes") ?: continue
+                var score = 0
+                val names = mutableListOf<String>()
+                val titleObj = a.optJSONObject("title")
+                titleObj?.keys()?.forEach { names += titleObj.optString(it) }
+                val alt = a.optJSONArray("altTitles")
+                for (j in 0 until (alt?.length() ?: 0)) alt?.optJSONObject(j)?.keys()?.forEach { key -> names += alt.optJSONObject(j)?.optString(key).orEmpty() }
+                for (name in names) {
+                    val n = norm(name)
+                    if (n == wanted) score = 100
+                    else if (n.contains(wanted) || wanted.contains(n)) score = maxOf(score, 80)
+                }
+                if (score > bestScore) { bestScore = score; manga = candidate }
+            }
+            val selected = manga ?: data.optJSONObject(0) ?: return@use null
+            val attr = selected.optJSONObject("attributes") ?: return@use null
             val description = attr.optJSONObject("description")?.optString("ar")?.ifBlank { attr.optJSONObject("description")?.optString("en") }.orEmpty()
             var author = ""; var artist = ""; var cover = ""
-            val rels = manga.optJSONArray("relationships")
+            val rels = selected.optJSONArray("relationships")
             for (i in 0 until (rels?.length() ?: 0)) {
                 val rel = rels?.optJSONObject(i) ?: continue
                 when (rel.optString("type")) {
                     "author" -> if (author.isBlank()) author = rel.optJSONObject("attributes")?.optString("name").orEmpty()
                     "artist" -> if (artist.isBlank()) artist = rel.optJSONObject("attributes")?.optString("name").orEmpty()
                     "cover_art" -> cover = rel.optJSONObject("attributes")?.optString("fileName").orEmpty().let { file ->
-                        if (file.isBlank()) "" else "https://uploads.mangadex.org/covers/${manga.optString("id")}/$file.256.jpg"
+                        if (file.isBlank()) "" else "https://uploads.mangadex.org/covers/${selected.optString("id")}/$file.256.jpg"
                     }
                 }
             }
