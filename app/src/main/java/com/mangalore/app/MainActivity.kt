@@ -1510,6 +1510,7 @@ private fun DetailScreen(
     var comments by remember { mutableStateOf(listOf<String>()) }
     var richComments by remember { mutableStateOf<List<CommentRecord>>(emptyList()) }
     var commentSpoiler by remember { mutableStateOf(false) }
+    val visibleRemoteComments = richComments.filter { it.parentId == null }
     LaunchedEffect(d.url) {
         comments = readSavedComments(context, d.url)
         runCatching { CloudStore.fetchComments(d.url) }.onSuccess { richComments = it }
@@ -1632,7 +1633,7 @@ private fun DetailScreen(
         // ── Tabs ──────────────────────────────────────────────
         item {
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
-                listOf("التفاصيل","الفصول (${d.chapters.size})","التعليقات (${comments.size})").forEachIndexed { i, lbl ->
+                listOf("التفاصيل","الفصول (${d.chapters.size})","التعليقات (${if (visibleRemoteComments.isNotEmpty()) visibleRemoteComments.size else comments.size})").forEachIndexed { i, lbl ->
                     val active = tab == i
                     Column(Modifier.weight(1f).clickable { tab = i },
                         horizontalAlignment = Alignment.CenterHorizontally) {
@@ -1686,8 +1687,7 @@ private fun DetailScreen(
                             Box(Modifier.size(36.dp).clip(CircleShape)
                                 .background(accent.copy(.2f)).border(1.dp, accent.copy(.35f), CircleShape),
                                 Alignment.Center) {
-                                Text(AuthStore.displayName.firstOrNull()?.uppercase() ?: "أ",
-                                    color = accent, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                                Image(painterResource(R.drawable.logo), "شعار مانجالور", Modifier.fillMaxSize().padding(5.dp), contentScale = ContentScale.Fit)
                             }
                             Text(AuthStore.displayName.ifBlank { "قارئ مانجالور" },
                                 color = TextSec, fontSize = 13.sp, fontWeight = FontWeight.Medium)
@@ -1721,7 +1721,7 @@ private fun DetailScreen(
                                         cloudScope.launch { runCatching { AuthStore.syncComments(d.url, comments) } }
                                     }
                                 },
-                                colors = ButtonDefaults.buttonColors(containerColor = accent),
+                                colors = ButtonDefaults.buttonColors(containerColor = accent, contentColor = TextPri),
                                 shape = ButtonShape,
                                 contentPadding = PaddingValues(horizontal = 18.dp, vertical = 8.dp)
                             ) {
@@ -1735,7 +1735,7 @@ private fun DetailScreen(
             }
 
             // Empty state
-            if (comments.isEmpty()) {
+            if (comments.isEmpty() && visibleRemoteComments.isEmpty()) {
                 item {
                     Box(Modifier.fillMaxWidth().padding(vertical = 32.dp), Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -1753,7 +1753,7 @@ private fun DetailScreen(
             }
 
             // Comments list
-            itemsIndexed(comments.asReversed()) { idx, comment ->
+            if (richComments.isEmpty()) itemsIndexed(comments.asReversed()) { idx, comment ->
                 val commentAccent = Palette[(idx * 3 + 7) % Palette.size]
                 val initial = AuthStore.displayName.firstOrNull()?.uppercase() ?: "أ"
                 Surface(
@@ -1765,11 +1765,8 @@ private fun DetailScreen(
                         // Comment header
                         Row(verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            Box(Modifier.size(34.dp).clip(CircleShape)
-                                .background(commentAccent.copy(.2f))
-                                .border(.5.dp, commentAccent.copy(.4f), CircleShape),
-                                Alignment.Center) {
-                                Text(initial, color = commentAccent, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                            Box(Modifier.size(34.dp).clip(CircleShape).background(commentAccent.copy(.2f)).border(.5.dp, commentAccent.copy(.4f), CircleShape), Alignment.Center) {
+                                Image(painterResource(R.drawable.logo), "شعار مانجالور", Modifier.fillMaxSize().padding(4.dp), contentScale = ContentScale.Fit)
                             }
                             Column(Modifier.weight(1f)) {
                                 Text(AuthStore.displayName.ifBlank { "قارئ مانجالور" },
@@ -1793,7 +1790,7 @@ private fun DetailScreen(
                     }
                 }
             }
-            items(richComments, key = { it.id }) { comment ->
+            items(visibleRemoteComments, key = { it.id }) { comment ->
                 var revealed by remember(comment.id) { mutableStateOf(!comment.spoiler) }
                 Surface(color = Surface2, shape = RoundedCornerShape(18.dp), modifier = Modifier.padding(horizontal = 14.dp, vertical = 5.dp).fillMaxWidth()) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -2514,7 +2511,7 @@ private fun ProfileScreen(accent: Color, onBack: () -> Unit) {
                             savingName = false
                         }
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = accent),
+                    colors = ButtonDefaults.buttonColors(containerColor = accent, contentColor = TextPri),
                     shape = ButtonShape
                 ) {
                     if (savingName) CircularProgressIndicator(Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
@@ -2673,7 +2670,7 @@ private fun SettingsScreen(accent:Color, amoled:Boolean, onAmoled:(Boolean)->Uni
         onDismissRequest = { confirmLogout = false }, containerColor = Surface2,
         title = { Text("تسجيل الخروج", color = TextPri, fontFamily = Font, fontWeight = FontWeight.Bold) },
         text = { Text("هل تريد تسجيل الخروج من هذا الجهاز؟", color = TextSec, fontFamily = Font) },
-        confirmButton = { Button({ confirmLogout = false; AuthStore.signOut(context); onSignedOut() }, shape = ButtonShape) { Text("تسجيل الخروج", fontFamily = Font) } },
+        confirmButton = { Button({ confirmLogout = false; AuthStore.signOut(context); onSignedOut() }, colors = ButtonDefaults.buttonColors(containerColor = accent, contentColor = TextPri), shape = ButtonShape) { Text("تسجيل الخروج", fontFamily = Font, color = TextPri) } },
         dismissButton = { TextButton({ confirmLogout = false }) { Text("إلغاء", color = TextSec, fontFamily = Font) } }
     )
 
@@ -2694,7 +2691,7 @@ private fun SettingsScreen(accent:Color, amoled:Boolean, onAmoled:(Boolean)->Uni
         confirmButton = {
             Button(enabled = !deleting && deleteName.trim() == AuthStore.displayName.trim() && deleteChecked,
                 onClick = { deleteDialog = false; finalDeleteDialog = true },
-                colors = ButtonDefaults.buttonColors(containerColor = Red), shape = ButtonShape) { Text("متابعة", fontFamily = Font) }
+                colors = ButtonDefaults.buttonColors(containerColor = Red, contentColor = TextPri), shape = ButtonShape) { Text("متابعة", fontFamily = Font, color = TextPri) }
         },
         dismissButton = { TextButton({ if (!deleting) deleteDialog = false }) { Text("إلغاء", color = TextSec, fontFamily = Font) } }
     )
@@ -2712,8 +2709,8 @@ private fun SettingsScreen(accent:Color, amoled:Boolean, onAmoled:(Boolean)->Uni
                         .onFailure { deleteError = it.message ?: "تعذر حذف الحساب"; finalDeleteDialog = false; deleteDialog = true }
                     deleting = false
                 }
-            }, colors = ButtonDefaults.buttonColors(containerColor = Red), shape = ButtonShape) {
-                Text(if (deleting) "جارٍ الحذف..." else "حذف نهائياً", fontFamily = Font)
+            }, colors = ButtonDefaults.buttonColors(containerColor = Red, contentColor = TextPri), shape = ButtonShape) {
+                Text(if (deleting) "جارٍ الحذف..." else "حذف نهائياً", fontFamily = Font, color = TextPri)
             }
         },
         dismissButton = { TextButton({ if (!deleting) finalDeleteDialog = false }) { Text("إلغاء", color = TextSec, fontFamily = Font) } }
