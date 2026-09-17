@@ -152,8 +152,14 @@ object AuthStore {
             else if (displayName.isNotBlank()) {
                 request("/rest/v1/profiles?id=eq.$userId", "PATCH", JSONObject().put("display_name", displayName.trim()), accessToken)
             }
+            val metadataAvatar = avatarUrl
             val profileAvatar = obj.optString("avatar_url").trim()
-            if (profileAvatar.isNotBlank()) avatarUrl = profileAvatar
+            if (metadataAvatar.isNotBlank() && metadataAvatar != profileAvatar) {
+                // Google avatar URLs are stored as URLs, not downloaded files.
+                request("/rest/v1/profiles?id=eq.$userId", "PATCH", JSONObject().put("avatar_url", metadataAvatar), accessToken)
+            } else if (metadataAvatar.isBlank() && profileAvatar.isNotBlank()) {
+                avatarUrl = profileAvatar
+            }
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
                 .putString(NAME, displayName).putString(AVATAR, avatarUrl).putString(EMAIL, email).apply()
         }
