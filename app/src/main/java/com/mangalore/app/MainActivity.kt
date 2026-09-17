@@ -130,7 +130,7 @@ private val AppTypography = Typography().let { t ->
 @Composable
 private fun BrandMark(modifier: Modifier = Modifier) {
     Image(
-        painter = painterResource(R.drawable.logo),
+        painter = painterResource(R.drawable.logo_vector),
         contentDescription = "شعار مانجالور",
         contentScale = ContentScale.Fit,
         modifier = modifier
@@ -632,14 +632,14 @@ private fun App(oauthTick: Int = 0) {
                 if (drawer) {
                     Box(
                         Modifier.fillMaxSize()
-                            .background(Color.Black.copy(.65f))
+                            .background(Color.Black.copy(.48f))
                             .pointerInput(Unit) { detectTapGestures { drawer = false } }
                     )
                 }
                 AnimatedVisibility(
                     visible = drawer,
-                    enter = fadeIn(tween(120)) + slideInHorizontally(tween(220)) { it },
-                    exit = fadeOut(tween(100)) + slideOutHorizontally(tween(180)) { it },
+                    enter = fadeIn(tween(120)),
+                    exit = fadeOut(tween(90)),
                     label = "rtl-drawer"
                 ) {
                     Drawer(accent, cur, { drawer = false }) { dest ->
@@ -1576,7 +1576,7 @@ private fun DetailScreen(
                             Box(Modifier.size(36.dp).clip(CircleShape)
                                 .background(accent.copy(.2f)).border(1.dp, accent.copy(.35f), CircleShape),
                                 Alignment.Center) {
-                                Image(painterResource(R.drawable.logo), "شعار مانجالور", Modifier.fillMaxSize().padding(5.dp), contentScale = ContentScale.Fit)
+                                Image(painterResource(R.drawable.logo_vector), "شعار مانجالور", Modifier.fillMaxSize().padding(5.dp), contentScale = ContentScale.Fit)
                             }
                             Text(AuthStore.displayName.ifBlank { "قارئ مانجالور" },
                                 color = TextSec, fontSize = 13.sp, fontWeight = FontWeight.Medium)
@@ -1665,7 +1665,7 @@ private fun DetailScreen(
                             horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             Box(Modifier.size(34.dp).clip(CircleShape).background(commentAccent.copy(.2f)).border(.5.dp, commentAccent.copy(.4f), CircleShape), Alignment.Center) {
                                 when {
-                                    AuthStore.isOwner -> Image(painterResource(R.drawable.logo), "حساب مطور موثق", Modifier.fillMaxSize().padding(4.dp), contentScale = ContentScale.Fit)
+                                    AuthStore.isOwner -> Image(painterResource(R.drawable.logo_vector), "حساب مطور موثق", Modifier.fillMaxSize().padding(4.dp), contentScale = ContentScale.Fit)
                                     AuthStore.avatarUrl.isNotBlank() -> AsyncImage(AuthStore.avatarUrl, "صورة المستخدم", Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
                                     else -> Icon(Icons.Default.Person, "صورة المستخدم", tint = TextSec)
                                 }
@@ -1699,7 +1699,7 @@ private fun DetailScreen(
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             Box(Modifier.size(42.dp).clip(CircleShape).background(Surface3), Alignment.Center) {
                                 when {
-                                    comment.verified -> Image(painterResource(R.drawable.logo), "حساب مطور موثق", Modifier.fillMaxSize().padding(4.dp), contentScale = ContentScale.Fit)
+                                    comment.verified -> Image(painterResource(R.drawable.logo_vector), "حساب مطور موثق", Modifier.fillMaxSize().padding(4.dp), contentScale = ContentScale.Fit)
                                     comment.avatar.isNotBlank() -> AsyncImage(comment.avatar, "صورة المستخدم", Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
                                     else -> Icon(Icons.Default.Person, "صورة المستخدم", tint = TextSec)
                                 }
@@ -2300,7 +2300,7 @@ private fun ProfileScreen(accent: Color, onBack: () -> Unit) {
                                 .then(if (AuthStore.isOwner) Modifier else Modifier.border(1.dp, Border, RoundedCornerShape(18.dp)))
                                 .clickable { if (!AuthStore.isOwner) avatarPicker.launch("image/*") }, Alignment.Center
                         ) {
-                            if (AuthStore.isOwner) Image(painterResource(R.drawable.logo), "شعار المالك", contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                            if (AuthStore.isOwner) Image(painterResource(R.drawable.logo_vector), "شعار المالك", contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize().padding(6.dp))
                             else if (avatarUrl.isNotBlank()) AsyncImage(
                                 model = avatarUrl, contentDescription = "صورة المستخدم",
                                 contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()
@@ -2668,7 +2668,7 @@ private fun SettingsScreen(accent:Color, amoled:Boolean, onAmoled:(Boolean)->Uni
 private fun Drawer(accent:Color, cur:Dest, onClose:()->Unit, onNav:(String)->Unit) {
     Box(Modifier.fillMaxSize()) {
         Surface(Modifier.fillMaxHeight().width(296.dp).align(Alignment.CenterStart).pointerInput(Unit){detectTapGestures{}},
-            color=Bg, shadowElevation=24.dp) {
+            color=Bg, shadowElevation=8.dp) {
             Column(Modifier.fillMaxSize()) {
                 // Header
                 Box(Modifier.fillMaxWidth().height(150.dp)
@@ -2680,7 +2680,7 @@ private fun Drawer(accent:Color, cur:Dest, onClose:()->Unit, onNav:(String)->Uni
                             horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             Box(Modifier.size(48.dp).clip(CircleShape).background(if (AuthStore.isOwner) Color.Transparent else Surface3), Alignment.Center) {
-                                if (AuthStore.isOwner) Image(painterResource(R.drawable.logo), "شعار المالك", contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                                if (AuthStore.isOwner) Image(painterResource(R.drawable.logo_vector), "شعار المالك", contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize().padding(6.dp))
                                 else if (AuthStore.avatarUrl.isNotBlank()) AsyncImage(
                                     model = AuthStore.avatarUrl, contentDescription = "صورة المستخدم",
                                     contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()
