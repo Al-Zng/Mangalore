@@ -12,6 +12,9 @@ import android.util.Log
 import android.os.Bundle
 import android.os.Build
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Locale
+import java.util.TimeZone
 import android.webkit.CookieManager
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
@@ -77,6 +80,13 @@ private val AccentLt = Color(0xFFD1AA78)
 private val Gold     = Color(0xFFFFC44D)
 private val Red      = Color(0xFFE05050)
 private val Green    = Color(0xFF4CAF82)
+
+private fun commentDate(value: String): String = runCatching {
+    val date = listOf("yyyy-MM-dd'T'HH:mm:ss.SSSX", "yyyy-MM-dd'T'HH:mm:ssX").firstNotNullOfOrNull { pattern ->
+        runCatching { SimpleDateFormat(pattern, Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }.parse(value) }.getOrNull()
+    } ?: return@runCatching value.take(10)
+    SimpleDateFormat("d MMMM yyyy", Locale("ar")).format(date)
+}.getOrElse { value.take(10) }
 
 private val Palette = listOf(
     Color(0xFFB88A5A), Color(0xFF9B7653), Color(0xFF8E6B58), Color(0xFF7A6655),
@@ -1766,7 +1776,11 @@ private fun DetailScreen(
                         Row(verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             Box(Modifier.size(34.dp).clip(CircleShape).background(commentAccent.copy(.2f)).border(.5.dp, commentAccent.copy(.4f), CircleShape), Alignment.Center) {
-                                Image(painterResource(R.drawable.logo), "شعار مانجالور", Modifier.fillMaxSize().padding(4.dp), contentScale = ContentScale.Fit)
+                                when {
+                                    AuthStore.isOwner -> Image(painterResource(R.drawable.logo), "حساب مطور موثق", Modifier.fillMaxSize().padding(4.dp), contentScale = ContentScale.Fit)
+                                    AuthStore.avatarUrl.isNotBlank() -> AsyncImage(AuthStore.avatarUrl, "صورة المستخدم", Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                                    else -> Icon(Icons.Default.Person, "صورة المستخدم", tint = TextSec)
+                                }
                             }
                             Column(Modifier.weight(1f)) {
                                 Text(AuthStore.displayName.ifBlank { "قارئ مانجالور" },
@@ -1794,8 +1808,21 @@ private fun DetailScreen(
                 var revealed by remember(comment.id) { mutableStateOf(!comment.spoiler) }
                 Surface(color = Surface2, shape = RoundedCornerShape(18.dp), modifier = Modifier.padding(horizontal = 14.dp, vertical = 5.dp).fillMaxWidth()) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) { Text(comment.name.ifBlank { "قارئ مانجالور" }, color = TextPri, fontWeight = FontWeight.SemiBold); Text("تعليق مجتمع", color = TextDim, fontSize = 10.sp) }
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Box(Modifier.size(42.dp).clip(CircleShape).background(Surface3), Alignment.Center) {
+                                when {
+                                    comment.verified -> Image(painterResource(R.drawable.logo), "حساب مطور موثق", Modifier.fillMaxSize().padding(4.dp), contentScale = ContentScale.Fit)
+                                    comment.avatar.isNotBlank() -> AsyncImage(comment.avatar, "صورة المستخدم", Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                                    else -> Icon(Icons.Default.Person, "صورة المستخدم", tint = TextSec)
+                                }
+                            }
+                            Column(Modifier.weight(1f)) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Text(comment.name.ifBlank { "قارئ مانجالور" }, color = TextPri, fontWeight = FontWeight.SemiBold)
+                                    if (comment.verified) Icon(Icons.Default.Verified, "موثق", tint = accent, modifier = Modifier.size(16.dp))
+                                }
+                                Text(commentDate(comment.createdAt), color = TextDim, fontSize = 10.sp)
+                            }
                             if (comment.userId == AuthStore.userId || AuthStore.isOwner) IconButton({ cloudScope.launch { runCatching { CloudStore.deleteComment(comment.id) }; richComments = CloudStore.fetchComments(d.url) } }) { Icon(Icons.Default.DeleteOutline, "حذف التعليق", tint = Red) }
                         }
                         if (comment.spoiler && !revealed) Button({ revealed = true }, colors = ButtonDefaults.buttonColors(containerColor = Color.White), shape = ButtonShape) { Text("إظهار الحرق", color = Color.Black) }

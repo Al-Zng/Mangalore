@@ -10,7 +10,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 data class AdminUser(val id: String, val email: String, val name: String, val avatar: String, val createdAt: String, val banned: Boolean)
-data class CommentRecord(val id: String, val userId: String, val name: String, val content: String, val parentId: String?, val spoiler: Boolean, val createdAt: String)
+data class CommentRecord(val id: String, val userId: String, val name: String, val avatar: String, val content: String, val parentId: String?, val spoiler: Boolean, val createdAt: String, val verified: Boolean = false)
 
 object CloudStore {
     private const val BASE = "https://ifczsjsqazlnogmyomsk.supabase.co"
@@ -48,7 +48,18 @@ object CloudStore {
     suspend fun fetchComments(mangaUrl: String): List<CommentRecord> {
         val encoded = java.net.URLEncoder.encode(mangaUrl, "UTF-8")
         val arr = JSONArray(call("/rest/v1/comments?manga_url=eq.$encoded&select=id,user_id,content,parent_id,is_spoiler,created_at&order=created_at.asc", "GET"))
-        return (0 until arr.length()).mapNotNull { i -> arr.optJSONObject(i)?.let { o -> CommentRecord(o.optString("id"), o.optString("user_id"), "", o.optString("content"), o.optString("parent_id").ifBlank { null }, o.optBoolean("is_spoiler"), o.optString("created_at")) } }
+        val ids = (0 until arr.length()).mapNotNull { arr.optJSONObject(it)?.optString("user_id")?.takeIf { id -> id.isNotBlank() } }.distinct()
+        val profiles = if (ids.isNotEmpty()) runCatching {
+            val p = JSONArray(call("/rest/v1/profiles?id=in.(${ids.joinToString(",")})&select=id,display_name,avatar_url", "GET"))
+            (0 until p.length()).mapNotNull { p.optJSONObject(it)?.let { o -> o.optString("id") to o } }.toMap()
+        }.getOrDefault(emptyMap()) else emptyMap()
+        return (0 until arr.length()).mapNotNull { i -> arr.optJSONObject(i)?.let { o ->
+            val userId = o.optString("user_id")
+            val profile = profiles[userId]
+            val name = profile?.optString("display_name").orEmpty().ifBlank { if (userId == AuthStore.userId) AuthStore.displayName else "قارئ مانجالور" }
+            val avatar = profile?.optString("avatar_url").orEmpty().ifBlank { if (userId == AuthStore.userId) AuthStore.avatarUrl else "" }
+            CommentRecord(o.optString("id"), userId, name, avatar, o.optString("content"), o.optString("parent_id").ifBlank { null }, o.optBoolean("is_spoiler"), o.optString("created_at"), userId == AuthStore.userId && AuthStore.isOwner || name.equals("MangaLore", true) || name.equals("Mangalore", true))
+        } }
     }
 
     suspend fun addComment(mangaUrl: String, mangaSlug: String, content: String, spoiler: Boolean, parentId: String? = null) {
