@@ -12,7 +12,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
 
-data class DownloadGroup(val key: String, val title: String, val cover: String, val total: Int, val done: Int)
+data class DownloadGroup(val key: String, val title: String, val cover: String, val total: Int, val done: Int, val mangaUrl: String = "", val chapterUrls: List<String> = emptyList())
 
 object LocalDownloads {
     private const val PREFS = "mangalore_downloads"
@@ -23,10 +23,11 @@ object LocalDownloads {
         if (chapters.isEmpty()) return
         val key = manga.url.hashCode().toString()
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        prefs.edit().putString(key, "$key|${manga.title}|${manga.chapters.size}|0|${manga.coverUrl}").apply()
+        prefs.edit().putString(key, "$key|${manga.title}|${manga.chapters.size}|0|${manga.coverUrl}|${manga.url}|${chapters.joinToString("§§") { it.url }}").apply()
         val req = OneTimeWorkRequestBuilder<ChapterDownloadWorker>()
             .setInputData(workDataOf(
                 "manga" to manga.title,
+                "mangaUrl" to manga.url,
                 "cover" to manga.coverUrl,
                 "key" to key,
                 "urls" to chapters.map { it.url }.toTypedArray()
@@ -40,7 +41,8 @@ object LocalDownloads {
         .filterKeys { !it.startsWith("chapter_") }
         .mapNotNull { (key, value) ->
             val p = (value as? String)?.split("|") ?: return@mapNotNull null
-            if (p.size >= 5) DownloadGroup(key, p[1], p[4], p[2].toIntOrNull() ?: 0, p[3].toIntOrNull() ?: 0)
+            if (p.size >= 7) DownloadGroup(key, p[1], p[4], p[2].toIntOrNull() ?: 0, p[3].toIntOrNull() ?: 0, p[5], p[6].split("§§").filter { it.isNotBlank() })
+            else if (p.size >= 5) DownloadGroup(key, p[1], p[4], p[2].toIntOrNull() ?: 0, p[3].toIntOrNull() ?: 0)
             else if (p.size >= 4) DownloadGroup(key, p[0], p.getOrNull(3).orEmpty(), p[1].toIntOrNull() ?: 0, p[2].toIntOrNull() ?: 0)
             else null
         }
@@ -83,7 +85,7 @@ class ChapterDownloadWorker(appContext: Context, params: WorkerParameters) : Cor
             completed++
             prefs.edit()
                 .putString("chapter_${url.hashCode()}", chapterDir.absolutePath)
-                .putString(key, "$key|$title|${urls.size}|$completed|$cover")
+                .putString(key, "$key|$title|${urls.size}|$completed|$cover|${inputData.getString("mangaUrl").orEmpty()}|${urls.joinToString("§§")}")
                 .apply()
         }
         Result.success()

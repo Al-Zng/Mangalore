@@ -190,6 +190,7 @@ private sealed class Dest {
     object Library : Dest()
     object History : Dest()
     object Downloads : Dest()
+    data class DownloadedManga(val group: DownloadGroup) : Dest()
     object CustomLists : Dest()
     object Profile : Dest()
     object Settings : Dest()
@@ -562,7 +563,8 @@ private fun App(oauthTick: Int = 0) {
                             appScope.launch { runCatching { CloudStore.removeLibrary(it.url) } }
                         }
                         is Dest.History -> HistoryScreen(accent, hist, ::pop, { p -> push(Dest.Reader(p.manga.chapters[p.chapterIndex].url, "الفصل ${p.manga.chapters[p.chapterIndex].number}", p.manga, p.chapterIndex, p.page)) }) { hist = emptyList() }
-                        is Dest.Downloads -> DownloadsScreen(accent, ::pop)
+                        is Dest.Downloads -> DownloadsScreen(accent, ::pop) { push(Dest.DownloadedManga(it)) }
+                        is Dest.DownloadedManga -> DownloadedMangaScreen(d.group, accent, ::pop) { chapter, manga -> push(Dest.Reader(chapter.url, "الفصل ${chapter.number}", manga, d.group.chapterUrls.indexOf(chapter.url), 1)) }
                         is Dest.CustomLists -> CustomListsScreen(accent, ::pop) { push(Dest.Detail(it)) }
                         is Dest.Profile -> ProfileScreen(accent, ::pop)
                         is Dest.Settings -> SettingsScreen(
@@ -1529,7 +1531,7 @@ private fun DetailScreen(
                             if (saved != null && saved.chapterIndex in d.chapters.indices) onContinue(saved)
                             else onChapter(d.chapters.last(), d.chapters.lastIndex)
                         }, Modifier.weight(1f).defaultMinSize(minHeight = 48.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = accent),
+                            colors = ButtonDefaults.buttonColors(containerColor = accent, contentColor = TextPri),
                             shape = ButtonShape) {
                             Icon(Icons.Default.PlayArrow, null, Modifier.size(16.dp))
                             Spacer(Modifier.width(4.dp))
@@ -2220,7 +2222,7 @@ private fun HistoryScreen(accent:Color, hist:List<ReadingProgress>,
 // PROFILE
 // ══════════════════════════════════════════════════════════════
 @Composable
-private fun DownloadsScreen(accent: Color, onBack: () -> Unit) {
+private fun DownloadsScreen(accent: Color, onBack: () -> Unit, onOpen: (DownloadGroup) -> Unit) {
     val context = LocalContext.current
     var rows by remember { mutableStateOf(LocalDownloads.groups(context)) }
     LaunchedEffect(Unit) { while (true) { rows = LocalDownloads.groups(context); delay(1000) } }
@@ -2231,7 +2233,7 @@ private fun DownloadsScreen(accent: Color, onBack: () -> Unit) {
         } else {
             LazyColumn(contentPadding = PaddingValues(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 items(rows, key = { it.key }) { group ->
-                    Surface(color = Surface2, shape = InputShape, border = BorderStroke(1.dp, Border)) {
+                    Surface(color = Surface2, shape = InputShape, border = BorderStroke(1.dp, Border), modifier = Modifier.clickable { onOpen(group) }) {
                         Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             Box(Modifier.size(54.dp, 78.dp).clip(RoundedCornerShape(10.dp))) { Img(group.cover, Modifier.fillMaxSize()) }
                             Column(Modifier.weight(1f)) {
@@ -2855,4 +2857,27 @@ private fun CustomListsScreen(accent: Color, onBack: () -> Unit, onPick: (MangaI
         text = { OutlinedTextField(nameInput, { nameInput = it }, label = { Text("اسم القائمة") }, singleLine = true, shape = InputShape) },
         confirmButton = { TextButton({ if (nameInput.trim().isNotBlank() && !names.contains(nameInput.trim())) { CustomListsStore.create(context, nameInput); names = names + nameInput.trim(); creating = false; refresh() } }) { Text("إنشاء", color = accent) } },
         dismissButton = { TextButton({ creating = false }) { Text("إلغاء", color = TextSec) } })
+}
+
+@Composable
+private fun DownloadedMangaScreen(group: DownloadGroup, accent: Color, onBack: () -> Unit, onRead: (ChapterItem, MangaDetail) -> Unit) {
+    val context = LocalContext.current
+    val chapters = group.chapterUrls.mapIndexed { index, url -> ChapterItem((index + 1).toString(), "", url, "") }
+    val manga = MangaDetail(group.title, group.key, group.cover, group.cover, group.mangaUrl, emptyList(), "", "", "", "", "", "", "", chapters)
+    Column(Modifier.fillMaxSize()) {
+        TopBar(group.title, accent, onBack)
+        if (chapters.isEmpty()) EmptyState(Icons.Default.Download, "لا توجد فصول مكتملة", "أعد تنزيل الفصول من صفحة المانجا")
+        else LazyColumn(contentPadding = PaddingValues(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            item { Text("الفصول المحفوظة على الجهاز", color = TextSec, fontSize = 13.sp, modifier = Modifier.padding(bottom = 4.dp)) }
+            items(chapters, key = { it.url }) { chapter ->
+                val pages = LocalDownloads.localImages(context, chapter.url).size
+                Row(Modifier.fillMaxWidth().clip(InputShape).background(Surface2).clickable { onRead(chapter, manga) }.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.MenuBook, null, tint = accent, modifier = Modifier.size(22.dp))
+                    Text("الفصل ${chapter.number}", color = TextPri, modifier = Modifier.weight(1f).padding(horizontal = 12.dp))
+                    Text("$pages صفحة", color = TextSec, fontSize = 12.sp)
+                    Icon(Icons.Default.ChevronLeft, null, tint = TextDim)
+                }
+            }
+        }
+    }
 }
