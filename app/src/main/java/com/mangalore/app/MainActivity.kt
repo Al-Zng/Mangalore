@@ -638,8 +638,8 @@ private fun App(oauthTick: Int = 0) {
                 }
                 AnimatedVisibility(
                     visible = drawer,
-                    enter = fadeIn(tween(90)) + slideInHorizontally(tween(150, easing = FastOutSlowInEasing)) { it / 3 },
-                    exit = fadeOut(tween(70)) + slideOutHorizontally(tween(120, easing = FastOutSlowInEasing)) { it / 3 },
+                    enter = fadeIn(tween(120)) + slideInHorizontally(tween(220)) { it },
+                    exit = fadeOut(tween(100)) + slideOutHorizontally(tween(180)) { it },
                     label = "rtl-drawer"
                 ) {
                     Drawer(accent, cur, { drawer = false }) { dest ->
@@ -1394,12 +1394,17 @@ private fun DetailScreen(
     var selectionMode by remember { mutableStateOf(false) }
     var showMoreMenu by remember { mutableStateOf(false) }
     var showListPicker by remember { mutableStateOf(false) }
+    var customListNames by remember { mutableStateOf(CustomListsStore.names(context)) }
     var commentText by remember { mutableStateOf("") }
     var comments by remember { mutableStateOf(listOf<String>()) }
     var richComments by remember { mutableStateOf<List<CommentRecord>>(emptyList()) }
     var commentSpoiler by remember { mutableStateOf(false) }
     var reactions by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
     val visibleRemoteComments = richComments.filter { it.parentId == null }
+    LaunchedEffect(AuthStore.userId) {
+        if (AuthStore.hasSession()) runCatching { CloudStore.fetchCustomLists() }
+            .onSuccess { customListNames = (customListNames + it.keys).distinct().sorted() }
+    }
     LaunchedEffect(d.url) {
         comments = readSavedComments(context, d.url)
         runCatching { CloudStore.fetchComments(d.url) }.onSuccess { richComments = it }
@@ -1861,7 +1866,7 @@ private fun DetailScreen(
         item { Spacer(Modifier.height(48.dp)) }
     }
     if (showListPicker) {
-        val names = CustomListsStore.names(context)
+        val names = customListNames
         AlertDialog(onDismissRequest = { showListPicker = false }, containerColor = Surface2,
             title = { Text("إضافة إلى قائمة", color = TextPri, fontFamily = Font, fontWeight = FontWeight.Bold) },
             text = {
@@ -2460,15 +2465,37 @@ private fun AdminScreen(accent: Color, onBack: () -> Unit) {
     var users by remember { mutableStateOf<List<AdminUser>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var notice by remember { mutableStateOf("") }
+    var query by remember { mutableStateOf("") }
+    var bannedOnly by remember { mutableStateOf(false) }
     fun refresh() { scope.launch { loading = true; runCatching { CloudStore.adminUsers() }.onSuccess { users = it }.onFailure { notice = it.message.orEmpty() }; loading = false } }
     LaunchedEffect(Unit) { refresh() }
+    val visibleUsers = users.filter { user ->
+        (!bannedOnly || user.banned) && (query.isBlank() || user.name.contains(query, true) || user.email.contains(query, true))
+    }
     Column(Modifier.fillMaxSize()) {
-        TopBar("لوحة الإدارة", accent, onBack)
+        TopBar("لوحة الإدارة", accent, onBack, action = {
+            IconButton(onClick = ::refresh, enabled = !loading) { Icon(Icons.Default.Refresh, "تحديث", tint = accent) }
+        })
         if (notice.isNotBlank()) Text(notice, color = Red, modifier = Modifier.padding(16.dp))
         if (loading) Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator(color = accent) }
         else LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            item { Text("إدارة الحسابات", color = TextPri, fontSize = 19.sp, fontWeight = FontWeight.Bold); Text("${users.size} حساب", color = TextSec, fontSize = 12.sp) }
-            items(users, key = { it.id }) { user ->
+            item {
+                Text("إدارة الحسابات", color = TextPri, fontSize = 19.sp, fontWeight = FontWeight.Bold)
+                Text("${users.size} حساب · ${users.count { it.banned }} محظور · ${users.count { !it.banned }} نشط", color = TextSec, fontSize = 12.sp)
+                OutlinedTextField(
+                    value = query, onValueChange = { query = it }, singleLine = true,
+                    placeholder = { Text("بحث بالاسم أو البريد", color = TextDim) },
+                    leadingIcon = { Icon(Icons.Default.Search, null, tint = TextSec) },
+                    modifier = Modifier.fillMaxWidth().padding(top = 10.dp), shape = InputShape,
+                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = accent, unfocusedBorderColor = Border)
+                )
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("عرض المحظورين فقط", color = TextSec, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                    Switch(checked = bannedOnly, onCheckedChange = { bannedOnly = it }, colors = SwitchDefaults.colors(checkedThumbColor = Color.Black, checkedTrackColor = accent))
+                }
+                Text("${visibleUsers.size} نتيجة", color = TextDim, fontSize = 11.sp)
+            }
+            items(visibleUsers, key = { it.id }) { user ->
                 Surface(color = Surface2, shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, Border), modifier = Modifier.fillMaxWidth()) {
                     Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Box(Modifier.size(44.dp).clip(CircleShape).background(Surface3), Alignment.Center) { if (user.avatar.isNotBlank()) AsyncImage(user.avatar, null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop) else Icon(Icons.Default.Person, null, tint = TextSec) }
@@ -2901,8 +2928,9 @@ private fun CustomListsScreen(accent: Color, onBack: () -> Unit, onPick: (MangaI
     var cloudLists by remember { mutableStateOf<Map<String, List<MangaItem>>>(emptyMap()) }
     var creating by remember { mutableStateOf(false) }
     var nameInput by remember { mutableStateOf("") }
-    fun refresh() { names = if (AuthStore.hasSession()) cloudLists.keys.sorted() else CustomListsStore.names(context); selected?.let { items = cloudLists[it] ?: CustomListsStore.get(context, it) } }
-    LaunchedEffect(Unit) { if (AuthStore.hasSession()) runCatching { CloudStore.fetchCustomLists() }.onSuccess { cloudLists = it; names = it.keys.sorted() } }
+    fun mergedNames(): List<String> = (cloudLists.keys + CustomListsStore.names(context)).distinct().sorted()
+    fun refresh() { names = mergedNames(); selected?.let { items = cloudLists[it] ?: CustomListsStore.get(context, it) } }
+    LaunchedEffect(Unit) { if (AuthStore.hasSession()) runCatching { CloudStore.fetchCustomLists() }.onSuccess { cloudLists = it; names = mergedNames() } }
     Column(Modifier.fillMaxSize()) {
         TopBar("قوائمي", accent, onBack, action = { IconButton({ creating = true; nameInput = "" }) { Icon(Icons.Default.Add, "إنشاء قائمة", tint = accent) } })
         if (names.isEmpty()) EmptyState(Icons.Default.PlaylistPlay, "لا توجد قوائم", "أنشئ قائمة من زر الإضافة")
@@ -2931,7 +2959,7 @@ private fun CustomListsScreen(accent: Color, onBack: () -> Unit, onPick: (MangaI
     if (creating) AlertDialog(onDismissRequest = { creating = false }, containerColor = Surface2,
         title = { Text("قائمة جديدة", color = TextPri, fontFamily = Font) },
         text = { OutlinedTextField(nameInput, { nameInput = it }, label = { Text("اسم القائمة") }, singleLine = true, shape = InputShape) },
-        confirmButton = { TextButton({ if (nameInput.trim().isNotBlank() && !names.contains(nameInput.trim())) { CustomListsStore.create(context, nameInput); names = names + nameInput.trim(); creating = false; refresh() } }) { Text("إنشاء", color = accent) } },
+        confirmButton = { TextButton({ if (nameInput.trim().isNotBlank() && !names.contains(nameInput.trim())) { CustomListsStore.create(context, nameInput); names = (names + nameInput.trim()).distinct().sorted(); creating = false; refresh() } }) { Text("إنشاء", color = accent) } },
         dismissButton = { TextButton({ creating = false }) { Text("إلغاء", color = TextSec) } })
 }
 
