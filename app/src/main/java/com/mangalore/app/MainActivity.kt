@@ -2301,11 +2301,15 @@ private fun ProfileScreen(accent: Color, onBack: () -> Unit) {
     var savingName by remember { mutableStateOf(false) }
     var displayName by remember { mutableStateOf(AuthStore.displayName.ifBlank { "قارئ مانجالور" }) }
     var avatarUrl by remember { mutableStateOf(AuthStore.avatarUrl) }
+    var uploadingAvatar by remember { mutableStateOf(false) }
     val avatarPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         uri?.toString()?.let {
-            avatarUrl = it
-            AuthStore.updateAvatar(context, it)
-            scope.launch { runCatching { AuthStore.syncAvatar(it) } }
+            uploadingAvatar = true
+            scope.launch {
+                runCatching { AuthStore.uploadAvatar(context, Uri.parse(it)) }
+                    .onSuccess { uploaded -> avatarUrl = uploaded; AuthStore.updateAvatar(context, uploaded) }
+                uploadingAvatar = false
+            }
         }
     }
 
@@ -2327,9 +2331,10 @@ private fun ProfileScreen(accent: Color, onBack: () -> Unit) {
                             Modifier.size(70.dp).clip(RoundedCornerShape(18.dp))
                                 .background(if (AuthStore.isOwner) Color.Transparent else Surface3)
                                 .then(if (AuthStore.isOwner) Modifier else Modifier.border(1.dp, Border, RoundedCornerShape(18.dp)))
-                                .clickable { if (!AuthStore.isOwner) avatarPicker.launch("image/*") }, Alignment.Center
+                                .clickable { if (!AuthStore.isOwner && !uploadingAvatar) avatarPicker.launch("image/*") }, Alignment.Center
                         ) {
-                            if (AuthStore.isOwner) Image(painterResource(R.drawable.logo), "شعار المالك", contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize().padding(3.dp))
+                            if (uploadingAvatar) CircularProgressIndicator(color = accent, modifier = Modifier.size(28.dp), strokeWidth = 3.dp)
+                            else if (AuthStore.isOwner) Image(painterResource(R.drawable.logo), "شعار المالك", contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize().padding(3.dp))
                             else if (avatarUrl.isNotBlank()) AsyncImage(
                                 model = avatarUrl, contentDescription = "صورة المستخدم",
                                 contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()

@@ -152,13 +152,14 @@ object AuthStore {
             else if (displayName.isNotBlank()) {
                 request("/rest/v1/profiles?id=eq.$userId", "PATCH", JSONObject().put("display_name", displayName.trim()), accessToken)
             }
-            val metadataAvatar = avatarUrl
             val profileAvatar = obj.optString("avatar_url").trim()
-            if (metadataAvatar.isNotBlank() && metadataAvatar != profileAvatar) {
+            val metadataAvatar = avatarUrl
+            if (profileAvatar.isNotBlank()) {
+                // An app-uploaded avatar takes priority over the current Google photo.
+                avatarUrl = profileAvatar
+            } else if (metadataAvatar.isNotBlank()) {
                 // Google avatar URLs are stored as URLs, not downloaded files.
                 request("/rest/v1/profiles?id=eq.$userId", "PATCH", JSONObject().put("avatar_url", metadataAvatar), accessToken)
-            } else if (metadataAvatar.isBlank() && profileAvatar.isNotBlank()) {
-                avatarUrl = profileAvatar
             }
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
                 .putString(NAME, displayName).putString(AVATAR, avatarUrl).putString(EMAIL, email).apply()
@@ -188,6 +189,29 @@ object AuthStore {
         request("/auth/v1/user", "PUT", JSONObject().put("data", JSONObject().put("avatar_url", clean)), accessToken)
         // Comments read avatars from profiles, so keep the profile row in sync too.
         request("/rest/v1/profiles?id=eq.$userId", "PATCH", JSONObject().put("avatar_url", clean), accessToken)
+    }
+
+    suspend fun uploadAvatar(context: Context, source: Uri): String = withContext(Dispatchers.IO) {
+        require(hasSession()) { "لا توجد جلسة مستخدم" }
+        val bytes = context.contentResolver.openInputStream(source)?.use { it.readBytes() }
+            ?: error("تعذر قراءة الصورة")
+        require(bytes.isNotEmpty()) { "الصورة فارغة" }
+        val mime = context.contentResolver.getType(source) ?: "image/jpeg"
+        val path = "$userId/avatar"
+        val request = Request.Builder()
+            .url("$BASE/storage/v1/object/avatars/$path")
+            .header("apikey", KEY)
+            .header("Authorization", "Bearer $accessToken")
+            .header("Content-Type", mime)
+            .header("x-upsert", "true")
+            .put(bytes.toRequestBody(mime.toMediaType()))
+            .build()
+        http.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) error("تعذر رفع الصورة (${response.code})")
+        }
+        val publicUrl = "$BASE/storage/v1/object/public/avatars/$path?v=${System.currentTimeMillis()}"
+        syncAvatar(publicUrl)
+        publicUrl
     }
 
     suspend fun loadComments(url: String): List<String> {
