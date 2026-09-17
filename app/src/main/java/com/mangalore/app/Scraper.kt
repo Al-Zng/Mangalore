@@ -380,7 +380,6 @@ object Scraper {
     // Returns (images, needsCfBypass)
     suspend fun fetchChapterImages(url: String): Pair<List<String>, Boolean> =
         withContext(Dispatchers.IO) {
-            if (!CookieStore.cfSolved) return@withContext Pair(emptyList(), true)
             Log.d("MangaloreChapter", "Fetching chapter: $url")
             val html = get(url) ?: return@withContext Pair(emptyList(), true)
             if (isCf(html)) {

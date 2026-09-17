@@ -2225,6 +2225,7 @@ private fun HistoryScreen(accent:Color, hist:List<ReadingProgress>,
 private fun DownloadsScreen(accent: Color, onBack: () -> Unit, onOpen: (DownloadGroup) -> Unit) {
     val context = LocalContext.current
     var rows by remember { mutableStateOf(LocalDownloads.groups(context)) }
+    var pendingDelete by remember { mutableStateOf<DownloadGroup?>(null) }
     LaunchedEffect(Unit) { while (true) { rows = LocalDownloads.groups(context); delay(1000) } }
     Column(Modifier.fillMaxSize()) {
         TopBar("التنزيلات", accent, onBack)
@@ -2241,11 +2242,19 @@ private fun DownloadsScreen(accent: Color, onBack: () -> Unit, onOpen: (Download
                                 Text("${group.done} فصل محمّل", color = TextSec, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
                                 LinearProgressIndicator(progress = { if (group.total > 0) group.done.toFloat() / group.total else 0f }, color = accent, trackColor = Surface3, modifier = Modifier.fillMaxWidth().padding(top = 10.dp))
                             }
+                            IconButton(onClick = { pendingDelete = group }) { Icon(Icons.Default.DeleteOutline, "حذف التنزيل", tint = Red) }
                         }
                     }
                 }
             }
         }
+    }
+    pendingDelete?.let { group ->
+        AlertDialog(onDismissRequest = { pendingDelete = null }, containerColor = Surface2,
+            title = { Text("حذف التنزيل؟", color = TextPri, fontFamily = Font) },
+            text = { Text("سيتم حذف ${group.title} وكل الفصول المحفوظة من الجهاز.", color = TextSec, fontFamily = Font) },
+            confirmButton = { TextButton({ LocalDownloads.delete(context, group); rows = LocalDownloads.groups(context); pendingDelete = null }) { Text("حذف", color = Red, fontFamily = Font) } },
+            dismissButton = { TextButton({ pendingDelete = null }) { Text("إلغاء", color = TextSec, fontFamily = Font) } })
     }
 }
 

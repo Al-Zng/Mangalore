@@ -5,6 +5,7 @@ import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import androidx.work.WorkManager
 import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.ExistingWorkPolicy
 import androidx.work.workDataOf
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -45,7 +46,7 @@ object LocalDownloads {
                 "key" to key,
                 "urls" to chapters.map { it.url }.toTypedArray()
             )).build()
-        WorkManager.getInstance(context).enqueue(req)
+        WorkManager.getInstance(context).enqueueUniqueWork("download_$key", ExistingWorkPolicy.REPLACE, req)
     }
 
     fun items(context: Context): List<String> = groups(context).map { "${it.title}|${it.total}|${it.done}|${it.cover}" }
@@ -70,6 +71,14 @@ object LocalDownloads {
     fun localImages(context: Context, chapterUrl: String): List<String> {
         val dir = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("chapter_${chapterUrl.hashCode()}", null) ?: return emptyList()
         return File(dir).listFiles()?.sortedBy { it.name }?.map { it.absolutePath }.orEmpty()
+    }
+
+    fun delete(context: Context, group: DownloadGroup) {
+        WorkManager.getInstance(context).cancelUniqueWork("download_${group.key}")
+        val edit = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().remove(group.key)
+        group.chapterUrls.forEach { edit.remove("chapter_${it.hashCode()}") }
+        edit.apply()
+        File(context.filesDir, "downloads/${group.title.hashCode()}").deleteRecursively()
     }
 }
 
