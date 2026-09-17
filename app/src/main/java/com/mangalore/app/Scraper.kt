@@ -60,6 +60,19 @@ object CookieStore {
     @Volatile var cfCookies: String = ""
     @Volatile var cfSolved:  Boolean = false
     fun has() = cfCookies.isNotBlank()
+
+    fun load(context: android.content.Context) {
+        cfCookies = context.getSharedPreferences("mangalore_web_cookies", android.content.Context.MODE_PRIVATE)
+            .getString("mangalik", "").orEmpty()
+        cfSolved = cfCookies.isNotBlank()
+    }
+
+    fun save(context: android.content.Context, cookies: String) {
+        cfCookies = cookies
+        cfSolved = cookies.isNotBlank()
+        context.getSharedPreferences("mangalore_web_cookies", android.content.Context.MODE_PRIVATE)
+            .edit().putString("mangalik", cookies).apply()
+    }
 }
 
 // ─────────────────────────────────────────────────────────────

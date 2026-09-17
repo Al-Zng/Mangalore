@@ -202,6 +202,8 @@ private sealed class Dest {
 
 data class ReadingProgress(val item: MangaItem, val manga: MangaDetail, val chapterIndex: Int, val page: Int = 1, val totalPages: Int = 0, val completed: Boolean = false)
 
+private data class PendingDownload(val manga: MangaDetail, val indexes: List<Int>)
+
 // ══════════════════════════════════════════════════════════════
 // ENTRY
 // ══════════════════════════════════════════════════════════════
@@ -456,6 +458,7 @@ private fun App(oauthTick: Int = 0) {
         }
     }
     LaunchedEffect(Unit) {
+        CookieStore.load(context)
         signedIn = AuthStore.restore(context)
         authReady = true
     }
@@ -506,6 +509,7 @@ private fun App(oauthTick: Int = 0) {
     }
 
     var showCf  by remember { mutableStateOf(false) }
+    var pendingDownload by remember { mutableStateOf<PendingDownload?>(null) }
     var readerRefresh by remember { mutableIntStateOf(0) }
     var toast   by remember { mutableStateOf("") }
     LaunchedEffect(authNotice) {
@@ -587,7 +591,8 @@ private fun App(oauthTick: Int = 0) {
                             },
                             onContinue = { saved ->
                                 push(Dest.Reader(saved.manga.chapters[saved.chapterIndex].url, "الفصل ${saved.manga.chapters[saved.chapterIndex].number}", saved.manga, saved.chapterIndex, saved.page))
-                            }
+                            },
+                            onDownload = { manga, indexes -> pendingDownload = PendingDownload(manga, indexes) }
                         )
                         is Dest.Reader -> key("${d.url}-${d.chapterIndex}-$readerRefresh") { ReaderScreen(
                             d.url, d.chTitle, d.manga, d.chapterIndex, accent, ::pop, d.page,
@@ -652,6 +657,20 @@ private fun App(oauthTick: Int = 0) {
                     )
                 }
 
+                pendingDownload?.let { request ->
+                    val firstUrl = request.indexes.mapNotNull { request.manga.chapters.getOrNull(it)?.url }.firstOrNull()
+                    if (firstUrl == null) {
+                        pendingDownload = null
+                    } else {
+                        HiddenCookieWebView(firstUrl) { cookies ->
+                            CookieStore.save(context, cookies)
+                            LocalDownloads.enqueue(context, request.manga, request.indexes)
+                            pendingDownload = null
+                            toast = "✓ بدأ تنزيل الفصول"
+                        }
+                    }
+                }
+
                 // ── Toast ─────────────────────────────────────
                 if (toast.isNotEmpty()) {
                     LaunchedEffect(toast) { kotlinx.coroutines.delay(3000L); toast = "" }
@@ -670,6 +689,48 @@ private fun App(oauthTick: Int = 0) {
 // ══════════════════════════════════════════════════════════════
 // CF BYPASS DIALOG
 // ══════════════════════════════════════════════════════════════
+@SuppressLint("SetJavaScriptEnabled")
+@Composable
+private fun HiddenCookieWebView(url: String, onReady: (String) -> Unit) {
+    AndroidView(
+        factory = { context ->
+            val delivered = java.util.concurrent.atomic.AtomicBoolean(false)
+            val webView = WebView(context).apply {
+                settings.javaScriptEnabled = true
+                settings.domStorageEnabled = true
+                settings.userAgentString = "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/124.0.0.0 Mobile Safari/537.36"
+                CookieManager.getInstance().setAcceptCookie(true)
+                CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
+                webViewClient = object : WebViewClient() {
+                    private fun deliver(v: WebView?) {
+                        if (delivered.get()) return
+                        val title = v?.title.orEmpty()
+                        if (listOf("Just a moment", "Attention Required", "Checking your browser").any { title.contains(it, true) }) return
+                        val cookies = CookieManager.getInstance().getCookie("https://mangalik.net").orEmpty()
+                        if (delivered.compareAndSet(false, true)) {
+                            CookieManager.getInstance().flush()
+                            onReady(cookies)
+                        }
+                    }
+                    override fun onPageFinished(v: WebView?, pageUrl: String?) {
+                        if (pageUrl?.contains("mangalik.net", true) == true) deliver(v)
+                    }
+                }
+                loadUrl(url)
+                Handler(Looper.getMainLooper()).postDelayed({
+                    if (delivered.compareAndSet(false, true)) {
+                        val cookies = CookieManager.getInstance().getCookie("https://mangalik.net").orEmpty()
+                        CookieManager.getInstance().flush()
+                        onReady(cookies)
+                    }
+                }, 20_000L)
+            }
+            webView
+        },
+        modifier = Modifier.size(1.dp).alpha(0f)
+    )
+}
+
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 private fun CfDialog(onSolved: (String) -> Unit, onSkip: () -> Unit) {
@@ -1434,7 +1495,8 @@ private fun DetailLoadingScreen(
 private fun DetailScreen(
     d: MangaDetail, accent: Color, lib: MutableList<MangaItem>,
     history: List<ReadingProgress>, onBack: () -> Unit,
-    onChapter: (ChapterItem, Int) -> Unit, onContinue: (ReadingProgress) -> Unit
+    onChapter: (ChapterItem, Int) -> Unit, onContinue: (ReadingProgress) -> Unit,
+    onDownload: (MangaDetail, List<Int>) -> Unit
 ) {
     val context = LocalContext.current
     val cloudScope = rememberCoroutineScope()
@@ -1750,7 +1812,7 @@ private fun DetailScreen(
                     if (selectionMode) {
                         if (selectedChapters.isNotEmpty()) {
                             TextButton(onClick = {
-                                LocalDownloads.enqueue(context, d, selectedChapters.sorted())
+                                onDownload(d, selectedChapters.sorted())
                                 selectedChapters = emptySet(); selectionMode = false
                             }) {
                                 Icon(Icons.Default.Download, null, tint = accent, modifier = Modifier.size(15.dp))
@@ -1842,7 +1904,7 @@ private fun DetailScreen(
                             )
                         } else {
                             IconButton(
-                                onClick = { LocalDownloads.enqueue(context, d, listOf(originalIndex)) },
+                                onClick = { onDownload(d, listOf(originalIndex)) },
                                 modifier = Modifier.size(36.dp)
                             ) {
                                 Icon(Icons.Default.Download, null, tint = TextDim, modifier = Modifier.size(18.dp))
@@ -1895,7 +1957,7 @@ private fun DetailScreen(
                     val rangeStart = ((from.toIntOrNull() ?: 1) - 1).coerceIn(0, d.chapters.lastIndex)
                     val rangeEnd = ((to.toIntOrNull() ?: from.toIntOrNull() ?: 1) - 1).coerceIn(rangeStart, d.chapters.lastIndex)
                     val indexes = if (selectedChapters.isNotEmpty()) selectedChapters.sorted() else (rangeStart..rangeEnd).toList()
-                    if (d.chapters.isNotEmpty()) LocalDownloads.enqueue(context, d, indexes)
+                    if (d.chapters.isNotEmpty()) onDownload(d, indexes)
                     selectedChapters = emptySet()
                     showDownloadDialog = false
                 }) { Text("تنزيل", color = accent) }

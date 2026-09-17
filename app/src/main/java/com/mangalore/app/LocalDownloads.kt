@@ -108,6 +108,7 @@ class ChapterDownloadWorker(appContext: Context, params: WorkerParameters) : Cor
         val key = inputData.getString("key") ?: title.hashCode().toString()
         val root = File(applicationContext.filesDir, "downloads/${title.hashCode()}").apply { mkdirs() }
         val client = OkHttpClient()
+        CookieStore.load(applicationContext)
         val coverBitmap: Bitmap? = runCatching {
             if (cover.startsWith("http")) client.newCall(Request.Builder().url(cover).build()).execute().use { response -> response.body?.byteStream()?.use { BitmapFactory.decodeStream(it) } } else null
         }.getOrNull()
