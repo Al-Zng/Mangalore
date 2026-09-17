@@ -20,6 +20,8 @@ import org.json.JSONArray
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import androidx.core.app.NotificationCompat
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 
 data class DownloadGroup(
     val key: String, val title: String, val cover: String, val total: Int, val done: Int,
@@ -106,13 +108,16 @@ class ChapterDownloadWorker(appContext: Context, params: WorkerParameters) : Cor
         val key = inputData.getString("key") ?: title.hashCode().toString()
         val root = File(applicationContext.filesDir, "downloads/${title.hashCode()}").apply { mkdirs() }
         val client = OkHttpClient()
+        val coverBitmap: Bitmap? = runCatching {
+            if (cover.startsWith("http")) client.newCall(Request.Builder().url(cover).build()).execute().use { response -> response.body?.byteStream()?.use { BitmapFactory.decodeStream(it) } } else null
+        }.getOrNull()
         var completed = 0
         val prefs = applicationContext.getSharedPreferences("mangalore_downloads", Context.MODE_PRIVATE)
         val nm = applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         val channelId = "mangalore_downloads"
         if (android.os.Build.VERSION.SDK_INT >= 26) nm.createNotificationChannel(NotificationChannel(channelId, "تنزيلات مانجالور", NotificationManager.IMPORTANCE_LOW))
         fun notify(done: Int, text: String, ongoing: Boolean = true) {
-            nm.notify(key.hashCode(), NotificationCompat.Builder(applicationContext, channelId).setSmallIcon(com.mangalore.app.R.drawable.app).setContentTitle("تنزيل $title").setContentText(text).setOnlyAlertOnce(true).setOngoing(ongoing).setProgress(urls.size, done, false).build())
+            nm.notify(key.hashCode(), NotificationCompat.Builder(applicationContext, channelId).setSmallIcon(com.mangalore.app.R.drawable.app).setLargeIcon(coverBitmap).setContentTitle("تنزيل $title").setContentText(text).setOnlyAlertOnce(true).setOngoing(ongoing).setProgress(urls.size, done, false).build())
         }
         notify(0, "بدء التنزيل…")
         for ((index, url) in urls.withIndex()) {

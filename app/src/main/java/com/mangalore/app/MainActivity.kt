@@ -2898,11 +2898,13 @@ private fun CustomListsScreen(accent: Color, onBack: () -> Unit, onPick: (MangaI
 @Composable
 private fun DownloadedMangaScreen(group: DownloadGroup, accent: Color, onBack: () -> Unit, onRead: (ChapterItem, MangaDetail) -> Unit) {
     val context = LocalContext.current
+    var newestFirst by remember { mutableStateOf(true) }
     var liveGroup by remember { mutableStateOf(group) }
     LaunchedEffect(group.key) { while (true) { liveGroup = LocalDownloads.groups(context).firstOrNull { it.key == group.key } ?: liveGroup; delay(1000) } }
-    val chapters = liveGroup.chapterUrls.mapIndexedNotNull { index, url ->
+    val downloadedChapters = liveGroup.chapterUrls.mapIndexedNotNull { index, url ->
         if (LocalDownloads.localImages(context, url).isNotEmpty()) ChapterItem("", liveGroup.chapterNames.getOrNull(index).orEmpty(), url, "") else null
     }
+    val chapters = if (newestFirst) downloadedChapters else downloadedChapters.reversed()
     val manga = MangaDetail(liveGroup.title, liveGroup.key, liveGroup.cover, liveGroup.cover, liveGroup.mangaUrl, liveGroup.genres, liveGroup.status, liveGroup.author, liveGroup.artist, liveGroup.description, liveGroup.rating, liveGroup.releaseYear, liveGroup.origin, chapters)
     val progress = if (liveGroup.total > 0) (liveGroup.done.toFloat() / liveGroup.total).coerceIn(0f, 1f) else 0f
     Column(Modifier.fillMaxSize()) {
@@ -2933,7 +2935,14 @@ private fun DownloadedMangaScreen(group: DownloadGroup, accent: Color, onBack: (
             }
             if (liveGroup.description.isNotBlank()) item { Text(liveGroup.description, color = TextSec, fontSize = 13.sp, lineHeight = 21.sp) }
             if (liveGroup.genres.isNotEmpty()) item { Text(liveGroup.genres.joinToString("  ·  "), color = accent, fontSize = 12.sp) }
-            item { Text("الفصول المحفوظة على الجهاز", color = TextSec, fontSize = 13.sp, modifier = Modifier.padding(top = 2.dp)) }
+            item {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("الفصول المحفوظة على الجهاز", color = TextSec, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                    FilterChip(selected = newestFirst, onClick = { newestFirst = true }, label = { Text("الأحدث", fontSize = 11.sp) })
+                    Spacer(Modifier.width(6.dp))
+                    FilterChip(selected = !newestFirst, onClick = { newestFirst = false }, label = { Text("الأقدم", fontSize = 11.sp) })
+                }
+            }
             if (chapters.isEmpty()) item { EmptyState(Icons.Default.Download, "لا توجد فصول مكتملة", "أعد تنزيل الفصول من صفحة المانجا") }
             items(chapters, key = { it.url }) { chapter ->
                 val pages = LocalDownloads.localImages(context, chapter.url).size

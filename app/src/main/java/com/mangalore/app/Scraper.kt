@@ -106,9 +106,9 @@ object Scraper {
     private fun translateFormat(value: String, country: String): String = when {
         value.equals("ONE_SHOT", true) -> "فصل واحد"
         value.equals("NOVEL", true) -> "رواية"
-        country.equals("KR", true) -> "مانهوا"
-        country.equals("CN", true) || country.equals("TW", true) -> "مانها"
-        value.equals("MANGA", true) || country.equals("JP", true) -> "مانجا"
+        country.equals("KR", true) || country.equals("KO", true) -> "مانهوا"
+        country.equals("CN", true) || country.equals("ZH", true) || country.equals("TW", true) -> "مانها"
+        value.equals("MANGA", true) || country.equals("JP", true) || country.equals("JA", true) -> "مانجا"
         else -> ""
     }
 
