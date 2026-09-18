@@ -557,6 +557,9 @@ private fun App(oauthTick: Int = 0) {
             LaunchedEffect(drawer) {
                 if (drawer) drawerState.open() else drawerState.close()
             }
+            LaunchedEffect(drawerState.isOpen) {
+                if (!drawerState.isOpen && drawer) drawer = false
+            }
             ModalNavigationDrawer(
                 drawerState = drawerState,
                 gesturesEnabled = true,
@@ -1329,14 +1332,10 @@ private fun DetailLoadingScreen(
 
     Box(Modifier.fillMaxSize()) {
         if (!err) {
-                // Static placeholder; the only motion is the single screen transition.
-            Column(Modifier.fillMaxSize()) {
-                Box(Modifier.fillMaxWidth().height(280.dp).background(Surface2))
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Box(Modifier.fillMaxWidth(.7f).height(22.dp).clip(RoundedCornerShape(6.dp)).background(Surface3))
-                    Box(Modifier.fillMaxWidth(.5f).height(14.dp).clip(RoundedCornerShape(4.dp)).background(Surface3))
-                    Spacer(Modifier.height(6.dp))
-                    repeat(5) { Box(Modifier.fillMaxWidth().height(13.dp).clip(RoundedCornerShape(4.dp)).background(Surface3)) }
+            Box(Modifier.fillMaxSize(), Alignment.Center) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    CircularProgressIndicator(color = accent, modifier = Modifier.size(52.dp), strokeWidth = 4.dp)
+                    Text("جاري تحميل التفاصيل...", color = TextSec, fontSize = 14.sp)
                 }
             }
         } else {
