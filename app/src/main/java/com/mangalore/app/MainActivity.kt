@@ -553,6 +553,32 @@ private fun App(oauthTick: Int = 0) {
             LocalLayoutDirection provides LayoutDirection.Rtl,
             LocalTextStyle provides LocalTextStyle.current.copy(fontFamily = Font)
         ) {
+            val drawerState = rememberDrawerState(DrawerValue.Closed)
+            LaunchedEffect(drawer) {
+                if (drawer) drawerState.open() else drawerState.close()
+            }
+            ModalNavigationDrawer(
+                drawerState = drawerState,
+                gesturesEnabled = true,
+                drawerContent = {
+                    Drawer(accent, cur, { drawer = false }) { dest ->
+                        when (dest) {
+                            "home"     -> home()
+                            "search"   -> push(Dest.Search)
+                            "all"      -> push(Dest.AllManga)
+                            "latest"   -> push(Dest.LatestManga)
+                            "popular"  -> push(Dest.PopularManga)
+                            "library"  -> { if (cur !is Dest.Library) push(Dest.Library) else drawer = false }
+                            "history"  -> { if (cur !is Dest.History) push(Dest.History) else drawer = false }
+                            "downloads" -> { if (cur !is Dest.Downloads) push(Dest.Downloads) else drawer = false }
+                            "custom" -> { if (cur !is Dest.CustomLists) push(Dest.CustomLists) else drawer = false }
+                            "profile"  -> { if (cur !is Dest.Profile) push(Dest.Profile) else drawer = false }
+                            "admin"    -> { if (AuthStore.isOwner) push(Dest.Admin) else drawer = false }
+                            "settings" -> { if (cur !is Dest.Settings) push(Dest.Settings) else drawer = false }
+                        }
+                    }
+                }
+            ) {
             Box(Modifier.fillMaxSize().background(appBg)) {
 
                 // ── Screens ───────────────────────────────────
@@ -630,38 +656,6 @@ private fun App(oauthTick: Int = 0) {
                     )
                 }
 
-                // ── Drawer ────────────────────────────────────
-                if (drawer) {
-                    Box(
-                        Modifier.fillMaxSize()
-                            .background(Color.Black.copy(.48f))
-                            .pointerInput(Unit) { detectTapGestures { drawer = false } }
-                    )
-                }
-                AnimatedVisibility(
-                    visible = drawer,
-                    enter = fadeIn(tween(120)) + slideInHorizontally(tween(220)) { it },
-                    exit = fadeOut(tween(100)) + slideOutHorizontally(tween(180)) { it },
-                    label = "rtl-drawer"
-                ) {
-                    Drawer(accent, cur, { drawer = false }) { dest ->
-                        when (dest) {
-                            "home"     -> home()
-                            "search"   -> push(Dest.Search)
-                            "all"      -> push(Dest.AllManga)
-                            "latest"   -> push(Dest.LatestManga)
-                            "popular"  -> push(Dest.PopularManga)
-                            "library"  -> { if (cur !is Dest.Library)  push(Dest.Library) else drawer = false }
-                            "history"  -> { if (cur !is Dest.History)  push(Dest.History) else drawer = false }
-                            "downloads" -> { if (cur !is Dest.Downloads) push(Dest.Downloads) else drawer = false }
-                            "custom" -> { if (cur !is Dest.CustomLists) push(Dest.CustomLists) else drawer = false }
-                            "profile"  -> { if (cur !is Dest.Profile)  push(Dest.Profile) else drawer = false }
-                            "admin"    -> { if (AuthStore.isOwner) push(Dest.Admin) else drawer = false }
-                            "settings" -> { if (cur !is Dest.Settings) push(Dest.Settings) else drawer = false }
-                        }
-                    }
-                }
-
                 // ── CF Popup ──────────────────────────────────
                 if (showCf) {
                     CfDialog(
@@ -695,6 +689,7 @@ private fun App(oauthTick: Int = 0) {
                         }
                     }
                 }
+            }
             }
         }
     }
