@@ -978,7 +978,7 @@ private fun HomeScreen(accent: Color, onMenu: () -> Unit, onSearch: () -> Unit, 
                     CircularProgressIndicator(color = accent, modifier = Modifier.size(48.dp), strokeWidth = 4.dp)
                 }
             }
-            return@LazyColumn
+            return@LazyVerticalGrid
         }
 
         if (error) {
@@ -995,7 +995,7 @@ private fun HomeScreen(accent: Color, onMenu: () -> Unit, onSearch: () -> Unit, 
                     }
                 }
             }
-            return@LazyColumn
+            return@LazyVerticalGrid
         }
 
         // ── Tabs ──────────────────────────────────────────────
