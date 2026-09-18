@@ -1333,10 +1333,7 @@ private fun DetailLoadingScreen(
     Box(Modifier.fillMaxSize()) {
         if (!err) {
             Box(Modifier.fillMaxSize(), Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    CircularProgressIndicator(color = accent, modifier = Modifier.size(52.dp), strokeWidth = 4.dp)
-                    Text("جاري تحميل التفاصيل...", color = TextSec, fontSize = 14.sp)
-                }
+                CircularProgressIndicator(color = accent, modifier = Modifier.size(52.dp), strokeWidth = 4.dp)
             }
         } else {
             Box(Modifier.fillMaxSize(), Alignment.Center) {
