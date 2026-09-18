@@ -205,7 +205,7 @@ object Scraper {
     }
 
     // ── HTTP client ───────────────────────────────────────────
-    private fun client(): OkHttpClient = OkHttpClient.Builder()
+    private val client = OkHttpClient.Builder()
         .connectTimeout(20, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
         .addInterceptor { chain ->
@@ -220,7 +220,7 @@ object Scraper {
         }.build()
 
     private fun get(url: String): String? = try {
-        client().newCall(Request.Builder().url(url).build()).execute().use { response ->
+        client.newCall(Request.Builder().url(url).build()).execute().use { response ->
             val body = response.body?.string().orEmpty()
             Log.d("MangaloreHttp", "GET $url code=${response.code} bytes=${body.length}")
             if (!response.isSuccessful) Log.e("MangaloreHttp", "HTTP ${response.code} for $url")
@@ -234,7 +234,7 @@ object Scraper {
     private fun fetchMangaDex(title: String): DexMetadata? = runCatching {
         val encoded = java.net.URLEncoder.encode(title, "UTF-8")
         val request = Request.Builder().url("https://api.mangadex.org/manga?title=$encoded&limit=5&order[relevance]=desc&includes[]=author&includes[]=artist&includes[]=cover_art").build()
-        client().newCall(request).execute().use { response ->
+        client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) return@use null
             val data = JSONObject(response.body?.string().orEmpty()).optJSONArray("data")
             if (data == null || data.length() == 0) return@use null
@@ -280,10 +280,9 @@ object Scraper {
         }
     }.getOrNull()
 
-    fun isCf(html: String) = html.contains("Just a moment") ||
-            html.contains("cf-browser-verification") ||
-            html.contains("Checking your browser") ||
-            html.length < 1500
+    fun isCf(html: String) = (html.contains("Just a moment", true) ||
+            html.contains("cf-browser-verification", true) ||
+            html.contains("Checking your browser", true)) && html.length < 50_000
 
     // ── Home ──────────────────────────────────────────────────
     suspend fun fetchHome(): List<MangaItem> = withContext(Dispatchers.IO) {

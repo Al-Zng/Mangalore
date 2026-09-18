@@ -504,6 +504,7 @@ private fun App(oauthTick: Int = 0) {
     var stack   by remember { mutableStateOf(listOf<Dest>(Dest.Home)) }
     val cur     = stack.last()
     var drawer  by remember { mutableStateOf(false) }
+    var navForward by remember { mutableStateOf(true) }
 
     val lib     = remember { mutableStateListOf<MangaItem>() }
     var hist by remember { mutableStateOf(listOf<ReadingProgress>()) }
@@ -530,9 +531,9 @@ private fun App(oauthTick: Int = 0) {
         }
     }
 
-    fun push(d: Dest) { stack = stack + d; drawer = false }
-    fun replaceTop(d: Dest) { stack = if (stack.size > 1) stack.dropLast(1) + d else listOf(d) }
-    fun pop()  { if (stack.size > 1) stack = stack.dropLast(1) }
+    fun push(d: Dest) { navForward = true; stack = stack + d; drawer = false }
+    fun replaceTop(d: Dest) { if (stack.size > 1) stack = stack.dropLast(1) + d }
+    fun pop()  { navForward = false; if (stack.size > 1) stack = stack.dropLast(1) }
     fun home() { stack = listOf(Dest.Home); drawer = false }
 
     BackHandler(stack.size > 1 || drawer) { if (drawer) drawer = false else pop() }
@@ -562,7 +563,7 @@ private fun App(oauthTick: Int = 0) {
                         if (initialState is Dest.Detail && targetState is Dest.DetailFull) {
                             EnterTransition.None togetherWith ExitTransition.None
                         } else {
-                            val forward = stack.size > 1
+                            val forward = navForward
                             (fadeIn(tween(180)) + slideInHorizontally(tween(180)) { if (forward) it else -it }) togetherWith
                                 (fadeOut(tween(140)) + slideOutHorizontally(tween(180)) { if (forward) -it else it })
                         }
@@ -606,15 +607,16 @@ private fun App(oauthTick: Int = 0) {
                             },
                             onDownload = { manga, indexes -> pendingDownload = PendingDownload(manga, indexes) }
                         )
-                        is Dest.Reader -> key("${d.url}-${d.chapterIndex}-$readerRefresh") { ReaderScreen(
+                        is Dest.Reader -> ReaderScreen(
                             d.url, d.chTitle, d.manga, d.chapterIndex, accent, ::pop, d.page,
                             onProgress = { page, total, completed ->
                                 hist = hist.map { p -> if (p.manga.url == d.manga.url) p.copy(manga = d.manga, item = MangaItem(d.manga.slug, d.manga.title, d.manga.slug, d.manga.coverUrl, d.manga.coverFull, d.manga.url), chapterIndex = d.chapterIndex, page = page, totalPages = total, completed = completed) else p }
                                 val ch = d.manga.chapters.getOrNull(d.chapterIndex)
                                 if (ch != null) appScope.launch { runCatching { CloudStore.saveProgress(MangaItem(d.manga.slug, d.manga.title, d.manga.slug, d.manga.coverUrl, d.manga.coverFull, d.manga.url), ch.url, ch.number, d.chapterIndex, page, total, completed) } }
                             },
-                            onCfNeeded = { showCf = true }
-                        ) }
+                            onCfNeeded = { showCf = true },
+                            readerRefresh = readerRefresh
+                        )
                     }
                 }
 
@@ -732,7 +734,8 @@ private fun HiddenCookieWebView(url: String, onReady: (String) -> Unit) {
             }
             webView
         },
-        modifier = Modifier.size(1.dp).alpha(0f)
+        modifier = Modifier.size(1.dp).alpha(0f),
+        onRelease = { webView -> webView.stopLoading(); webView.destroy() }
     )
 }
 
@@ -817,7 +820,8 @@ private fun CfDialog(onSolved: (String) -> Unit, onSkip: () -> Unit) {
                             loadUrl(Scraper.cfChallengeUrl())
                         }
                     },
-                    modifier = Modifier.fillMaxSize()
+                    modifier = Modifier.fillMaxSize(),
+                    onRelease = { webView -> webView.stopLoading(); webView.destroy() }
                 )
             }
         }
@@ -864,7 +868,8 @@ private fun CfProbe(onChallenge: () -> Unit, onSolved: (String) -> Unit) {
                 loadUrl(Scraper.cfChallengeUrl())
             }
         },
-        modifier = Modifier.size(1.dp).alpha(0f)
+        modifier = Modifier.size(1.dp).alpha(0f),
+        onRelease = { webView -> webView.stopLoading(); webView.destroy() }
     )
 }
 
@@ -919,7 +924,8 @@ private fun GoogleAuthDialog(onSigned: (Uri) -> Unit, onDismiss: () -> Unit) {
                             loadUrl(AuthStore.googleAuthUrl())
                         }
                     },
-                    modifier = Modifier.fillMaxSize()
+                    modifier = Modifier.fillMaxSize(),
+                    onRelease = { webView -> webView.stopLoading(); webView.destroy() }
                 )
             }
         }
@@ -957,39 +963,26 @@ private fun HomeScreen(accent: Color, onMenu: () -> Unit, onSearch: () -> Unit, 
     val list    = if (tab == 1) popular else latest
 
     Box(Modifier.fillMaxSize()) {
-        LazyColumn(Modifier.fillMaxSize().statusBarsPadding().padding(top = 72.dp)) {
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(3),
+            modifier = Modifier.fillMaxSize().statusBarsPadding().padding(top = 72.dp),
+            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
 
         // ── Shimmer or Error ──────────────────────────────────
         if (loading) {
-            item {
-                // Tab shimmer
-                Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Box(Modifier.weight(1f).height(36.dp).clip(RoundedCornerShape(20.dp)).background(staticPlaceholder()))
-                    Box(Modifier.weight(1f).height(36.dp).clip(RoundedCornerShape(20.dp)).background(staticPlaceholder()))
-                }
-                Spacer(Modifier.height(14.dp).fillMaxWidth())
-                // Grid shimmer
-                LazyVerticalGrid(GridCells.Fixed(3), Modifier.heightIn(max = 1600.dp),
-                    contentPadding = PaddingValues(horizontal = 14.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalArrangement   = Arrangement.spacedBy(14.dp)) {
-                    items(12) {
-                        Column {
-                            Box(Modifier.fillMaxWidth().aspectRatio(CoverAspect).clip(RoundedCornerShape(12.dp)).background(staticPlaceholder()))
-                            Spacer(Modifier.height(6.dp))
-                            Box(Modifier.fillMaxWidth(.8f).height(12.dp).clip(RoundedCornerShape(4.dp)).background(staticPlaceholder()))
-                            Spacer(Modifier.height(4.dp))
-                            Box(Modifier.fillMaxWidth(.5f).height(10.dp).clip(RoundedCornerShape(4.dp)).background(staticPlaceholder()))
-                        }
-                    }
+            item(span = { GridItemSpan(3) }) {
+                Box(Modifier.fillMaxWidth().height(420.dp), Alignment.Center) {
+                    CircularProgressIndicator(color = accent, modifier = Modifier.size(48.dp), strokeWidth = 4.dp)
                 }
             }
             return@LazyColumn
         }
 
         if (error) {
-            item {
+            item(span = { GridItemSpan(3) }) {
                 Box(Modifier.fillMaxWidth().height(400.dp), Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Icon(Icons.Default.WifiOff, null, tint = TextDim, modifier = Modifier.size(52.dp))
@@ -1006,7 +999,7 @@ private fun HomeScreen(accent: Color, onMenu: () -> Unit, onSearch: () -> Unit, 
         }
 
         // ── Tabs ──────────────────────────────────────────────
-        item {
+        item(span = { GridItemSpan(3) }) {
             Row(Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf("آخر التحديثات", "الأكثر شعبية").forEachIndexed { i, lbl ->
@@ -1027,7 +1020,7 @@ private fun HomeScreen(accent: Color, onMenu: () -> Unit, onSearch: () -> Unit, 
 
         // ── Latest chapter quick row (horizontal) ─────────────
         if (list.size > 1) {
-            item {
+            item(span = { GridItemSpan(3) }) {
                 Column {
                     Row(Modifier.padding(horizontal = 14.dp, vertical = 4.dp),
                         verticalAlignment = Alignment.CenterVertically) {
@@ -1062,7 +1055,7 @@ private fun HomeScreen(accent: Color, onMenu: () -> Unit, onSearch: () -> Unit, 
         }
 
         // Section label
-        item {
+        item(span = { GridItemSpan(3) }) {
             Row(Modifier.padding(horizontal = 14.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("جميع الأعمال", color = TextPri, fontSize = 15.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.weight(1f))
@@ -1071,12 +1064,7 @@ private fun HomeScreen(accent: Color, onMenu: () -> Unit, onSearch: () -> Unit, 
         }
 
         // ── Main Grid ─────────────────────────────────────────
-        item {
-            LazyVerticalGrid(GridCells.Fixed(3), Modifier.heightIn(max = 9000.dp),
-                contentPadding = PaddingValues(horizontal = 14.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalArrangement   = Arrangement.spacedBy(16.dp)) {
-                items(list.drop(1), key = { it.id }) { m ->
+        items(list.drop(1), key = { it.id }) { m ->
                     SpringCard({ onPick(m) }) {
                         Column {
                             Box(Modifier.fillMaxWidth().aspectRatio(CoverAspect).clip(RoundedCornerShape(12.dp))) {
@@ -1106,14 +1094,12 @@ private fun HomeScreen(accent: Color, onMenu: () -> Unit, onSearch: () -> Unit, 
                             Text(m.title, color = TextPri, fontSize = 11.sp, maxLines = 2,
                                 overflow = TextOverflow.Ellipsis, lineHeight = 15.sp)
                             if (m.chapterDate.isNotEmpty()) {
-                                Text(formatRelativeDate(m.chapterDate), color = TextDim, fontSize = 9.sp)
+                                Text(remember(m.chapterDate) { formatRelativeDate(m.chapterDate) }, color = TextDim, fontSize = 9.sp)
                             }
                         }
                     }
-                }
-            }
         }
-            item { Spacer(Modifier.height(48.dp)) }
+        item(span = { GridItemSpan(3) }) { Spacer(Modifier.height(48.dp)) }
         }
         Surface(color = Surface2, shadowElevation = 4.dp,
             modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth()) {
@@ -1208,11 +1194,9 @@ private fun SearchScreen(accent: Color, onBack: () -> Unit, onPick: (MangaItem) 
             LazyVerticalGrid(GridCells.Fixed(3), contentPadding = PaddingValues(14.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalArrangement   = Arrangement.spacedBy(14.dp)) {
-                items(12) {
-                    Column {
-                        Box(Modifier.fillMaxWidth().aspectRatio(CoverAspect).clip(RoundedCornerShape(12.dp)).background(staticPlaceholder()))
-                        Spacer(Modifier.height(6.dp))
-                        Box(Modifier.fillMaxWidth(.8f).height(11.dp).clip(RoundedCornerShape(4.dp)).background(staticPlaceholder()))
+                item(span = { GridItemSpan(3) }) {
+                    Box(Modifier.fillMaxWidth().height(300.dp), Alignment.Center) {
+                        CircularProgressIndicator(color = accent, modifier = Modifier.size(44.dp), strokeWidth = 4.dp)
                     }
                 }
             }
@@ -1307,7 +1291,11 @@ private fun MangaListScreen(title: String, accent: Color, onBack: () -> Unit, lo
         TopBar(title, accent, onBack)
         if (loading) {
             LazyVerticalGrid(GridCells.Fixed(3), contentPadding = PaddingValues(14.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                items(9) { Box(Modifier.fillMaxWidth().aspectRatio(CoverAspect).clip(RoundedCornerShape(12.dp)).background(staticPlaceholder())) }
+                item(span = { GridItemSpan(3) }) {
+                    Box(Modifier.fillMaxWidth().height(300.dp), Alignment.Center) {
+                        CircularProgressIndicator(color = accent, modifier = Modifier.size(44.dp), strokeWidth = 4.dp)
+                    }
+                }
             }
         } else if (items.isEmpty()) {
             EmptyState(Icons.Default.WifiOff, "لا توجد أعمال", "تعذّر تحميل القائمة")
@@ -1392,6 +1380,7 @@ private fun DetailScreen(
     var showDownloadDialog by remember { mutableStateOf(false) }
     var selectedChapters by remember { mutableStateOf(setOf<Int>()) }
     var selectionMode by remember { mutableStateOf(false) }
+    BackHandler(selectionMode) { selectionMode = false; selectedChapters = emptySet() }
     var showMoreMenu by remember { mutableStateOf(false) }
     var showListPicker by remember { mutableStateOf(false) }
     var customListNames by remember { mutableStateOf(CustomListsStore.names(context)) }
@@ -1808,7 +1797,7 @@ private fun DetailScreen(
                 val progressLabel = when {
                     progress?.completed == true -> "تمت المشاهدة"
                     progress != null -> "أكمل من الصفحة ${progress.page}"
-                    ch.date.isNotEmpty() -> formatRelativeDate(ch.date).ifBlank { "التاريخ غير متوفر" }
+                    ch.date.isNotEmpty() -> remember(ch.date) { formatRelativeDate(ch.date).ifBlank { "التاريخ غير متوفر" } }
                     else -> "التاريخ غير متوفر"
                 }
                 val progressColor = when {
@@ -1944,7 +1933,7 @@ private fun DetailScreen(
 private fun ReaderScreen(
     chUrl: String, chTitle: String, manga: MangaDetail, chapterIndex: Int,
     accent: Color, onBack: () -> Unit, initialPage: Int = 1,
-    onProgress: (Int, Int, Boolean) -> Unit, onCfNeeded: () -> Unit
+    onProgress: (Int, Int, Boolean) -> Unit, onCfNeeded: () -> Unit, readerRefresh: Int = 0
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -2020,7 +2009,7 @@ private fun ReaderScreen(
         }
     }
     fun retry() { blocks = emptyList(); loadedIndices = emptySet(); failedImageUrls = emptySet(); loadChapter(chapterIndex, true) }
-    LaunchedEffect(chUrl, chapterIndex) { retry() }
+    LaunchedEffect(chUrl, chapterIndex, readerRefresh) { retry() }
     LaunchedEffect(state, initialPage) { if (state == 1 && initialPage > 1) listState.scrollToItem(initialPage.coerceAtMost((listState.layoutInfo.totalItemsCount - 1).coerceAtLeast(0))) }
     LaunchedEffect(currentPage, totalPages, state) { if (state == 1 && totalPages > 0) onProgress(currentPage, totalPages, currentPage >= totalPages) }
     LaunchedEffect(autoScrollEnabled, autoScrollSpeed) {
@@ -2810,11 +2799,15 @@ private fun Img(url:String, modifier:Modifier=Modifier, scale:ContentScale=Conte
         Box(modifier.background(Surface3))
         return
     }
-    AsyncImage(
-        model = ImageRequest.Builder(LocalContext.current).data(url)
+    val context = LocalContext.current
+    val model = remember(url) {
+        ImageRequest.Builder(context).data(url)
             .addHeader("Referer","https://mangalik.net/")
             .addHeader("User-Agent","Mozilla/5.0 (Linux; Android 14) Chrome/124.0.0.0")
-            .crossfade(0).build(),
+            .crossfade(0).build()
+    }
+    AsyncImage(
+        model = model,
         contentDescription = null, contentScale = scale, modifier = modifier
     )
 }
@@ -2936,15 +2929,6 @@ private fun SpringCard(onClick:()->Unit, content:@Composable ()->Unit) {
             fontWeight=if(sel) FontWeight.SemiBold else FontWeight.Normal,
             modifier=Modifier.padding(horizontal=14.dp))
     }
-}
-
-// ══════════════════════════════════════════════════════════════
-// SHIMMER
-// ══════════════════════════════════════════════════════════════
-@Composable private fun staticPlaceholder(): Brush {
-    val transition = rememberInfiniteTransition(label = "placeholder-shimmer")
-    val x by transition.animateFloat(-1f, 1.5f, infiniteRepeatable(tween(900, easing = LinearEasing)), label = "placeholder-offset")
-    return Brush.linearGradient(listOf(Surface3.copy(.45f), Color(0xFF252530), Surface3.copy(.8f)), Offset(x * 900f, 0f), Offset((x + .5f) * 1100f, 180f))
 }
 
 @Composable
