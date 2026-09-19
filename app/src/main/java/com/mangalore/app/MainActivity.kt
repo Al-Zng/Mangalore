@@ -75,7 +75,7 @@ import org.json.JSONArray
 // TOKENS
 // ══════════════════════════════════════════════════════════════
 private val Black    = Color(0xFF000000)
-private val Bg       = Color(0xFF0D0D0F)
+private val Bg       = Color(0xFF101727)
 private val Surface2 = Color(0xFF16161A)
 private val Surface3 = Color(0xFF1E1E24)
 private val Border   = Color(0xFF2A2A32)
@@ -180,13 +180,15 @@ private fun formatRelativeDate(raw: String): String {
 }
 
 // ── تحويل رمز لغة/نوع العمل إلى تسمية عربية صحيحة ──────────────
-private fun originLabel(raw: String): String = when (raw.trim().lowercase()) {
-    "ja", "japanese", "manga"           -> "مانجا (يابانية)"
-    "ko", "korean", "manhwa"            -> "مانهوا (كورية)"
-    "zh", "zh-hk", "zh-ro", "chinese",
-    "manhua"                            -> "مانهوا (صينية)"
-    "en", "english"                     -> "كوميك (إنجليزي)"
-    else                                -> raw
+private fun originLabel(raw: String): String {
+    val v = raw.trim()
+    return when (v.lowercase()) {
+        "ja", "japanese", "manga", "مانجا"           -> "مانجا (يابانية)"
+        "ko", "korean", "manhwa", "مانهوا"           -> "مانهوا (كورية)"
+        "zh", "zh-hk", "zh-ro", "chinese", "manhua", "مانها" -> "مانها (صينية)"
+        "en", "english"                              -> "كوميك (إنجليزي)"
+        else                                         -> v
+    }
 }
 
 private fun readSavedComments(context: Context, url: String): List<String> {
@@ -1059,14 +1061,121 @@ private fun HomeScreen(
 
         // ── Most popular hero ─────────────────────────────────
         if (feature != null) item(span = { GridItemSpan(3) }) {
-            Surface(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 6.dp).clickable { onPick(feature) }, color = Surface2, shape = RoundedCornerShape(18.dp), border = BorderStroke(1.dp, Border)) {
-                Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Box(Modifier.size(82.dp, 116.dp).clip(RoundedCornerShape(12.dp))) { Img(feature.coverUrl, Modifier.fillMaxSize()) }
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                        Text("الأكثر شعبية", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        Text(feature.title, color = TextPri, fontSize = 17.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                        if (feature.latestChapter.isNotBlank()) Text(feature.latestChapter, color = TextSec, fontSize = 11.sp)
-                        Button({ onPick(feature) }, colors = ButtonDefaults.buttonColors(containerColor = accent, contentColor = Color.White), shape = ButtonShape, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)) { Icon(Icons.Default.PlayArrow, null, Modifier.size(15.dp)); Spacer(Modifier.width(4.dp)); Text("ابدأ القراءة", fontSize = 12.sp, color = Color.White) }
+            Box(Modifier.fillMaxWidth()) {
+                AnimatedContent(
+                    targetState = feature,
+                    transitionSpec = { fadeIn(tween(500)) togetherWith fadeOut(tween(350)) },
+                    label = "hero-anim"
+                ) { heroItem ->
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(260.dp)
+                            .clickable { onPick(heroItem) }
+                    ) {
+                        // Blurred background cover
+                        Img(
+                            heroItem.coverFull.ifEmpty { heroItem.coverUrl },
+                            Modifier.fillMaxSize().blur(24.dp),
+                            ContentScale.Crop
+                        )
+                        // Gradient overlay
+                        Box(
+                            Modifier.matchParentSize().background(
+                                Brush.verticalGradient(
+                                    0f to Color.Black.copy(.25f),
+                                    .45f to Color.Black.copy(.55f),
+                                    1f to Color.Black.copy(.92f)
+                                )
+                            )
+                        )
+                        // Cover + info row at bottom
+                        Row(
+                            Modifier
+                                .align(Alignment.BottomStart)
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 16.dp),
+                            verticalAlignment = Alignment.Bottom,
+                            horizontalArrangement = Arrangement.spacedBy(14.dp)
+                        ) {
+                            // Cover card
+                            Box(
+                                Modifier
+                                    .width(108.dp)
+                                    .height(158.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .shadow(16.dp, RoundedCornerShape(12.dp))
+                                    .border(1.5.dp, Color.White.copy(.18f), RoundedCornerShape(12.dp))
+                            ) {
+                                Img(heroItem.coverFull.ifEmpty { heroItem.coverUrl }, Modifier.fillMaxSize())
+                            }
+                            // Info
+                            Column(
+                                Modifier.weight(1f).padding(bottom = 4.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                ) {
+                                    Icon(Icons.Default.Star, null, tint = Gold, modifier = Modifier.size(12.dp))
+                                    Text("الأكثر شعبية", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                                Text(
+                                    heroItem.title,
+                                    color = Color.White,
+                                    fontSize = 19.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                    style = LocalTextStyle.current.copy(
+                                        shadow = Shadow(Color.Black, Offset(0f, 1f), blurRadius = 6f)
+                                    )
+                                )
+                                if (heroItem.latestChapter.isNotBlank())
+                                    Text(heroItem.latestChapter, color = Color.White.copy(.72f), fontSize = 11.sp)
+                                if (heroItem.score.isNotEmpty() && heroItem.score != "0")
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                                        Icon(Icons.Default.Star, null, tint = Gold.copy(.7f), modifier = Modifier.size(10.dp))
+                                        Text(heroItem.score, color = Gold.copy(.8f), fontSize = 10.sp)
+                                    }
+                                Button(
+                                    { onPick(heroItem) },
+                                    colors = ButtonDefaults.buttonColors(containerColor = accent, contentColor = Color.White),
+                                    shape = ButtonShape,
+                                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                                ) {
+                                    Icon(Icons.Default.PlayArrow, null, Modifier.size(15.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("ابدأ القراءة", fontSize = 13.sp, color = Color.White)
+                                }
+                            }
+                        }
+                    }
+                }
+                // Progress dots
+                if (popular.size > 1) {
+                    Row(
+                        Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(top = 12.dp, end = 14.dp),
+                        horizontalArrangement = Arrangement.spacedBy(5.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        repeat(minOf(popular.size, 6)) { idx ->
+                            val isActive = idx == heroIndex
+                            val w by animateDpAsState(
+                                if (isActive) 18.dp else 5.dp,
+                                tween(300),
+                                label = "dot-w"
+                            )
+                            Box(
+                                Modifier
+                                    .size(w, 5.dp)
+                                    .clip(RoundedCornerShape(3.dp))
+                                    .background(if (isActive) Color.White else Color.White.copy(.35f))
+                            )
+                        }
                     }
                 }
             }
@@ -2147,8 +2256,9 @@ private fun ReaderScreen(
     var state by remember { mutableStateOf(0) }
     var bars by remember { mutableStateOf(true) }
     val listState = rememberLazyListState()
-    var readingMode by remember { mutableStateOf("طولي") }
-    var horizontalDirection by remember { mutableStateOf("يمين لليسار") }
+    val readerPrefsEarly = context.getSharedPreferences("mangalore_reader_prefs", Context.MODE_PRIVATE)
+    var readingMode by remember { mutableStateOf(readerPrefsEarly.getString("readingMode", "طولي") ?: "طولي") }
+    var horizontalDirection by remember { mutableStateOf(readerPrefsEarly.getString("horizontalDirection", "يمين لليسار") ?: "يمين لليسار") }
     val activeChapterBlock by remember { derivedStateOf {
         if (blocks.isEmpty()) 0 else {
             val visible = listState.firstVisibleItemIndex
@@ -2178,12 +2288,13 @@ private fun ReaderScreen(
     val totalPages by remember { derivedStateOf { blocks.getOrNull(activeChapterBlock)?.second?.size ?: 0 } }
     var showChapterList by remember { mutableStateOf(false) }
     var showReaderSettings by remember { mutableStateOf(false) }
-    var zoomImages by remember { mutableStateOf(false) }
-    var keepScreenOn by remember { mutableStateOf(true) }
-    var showPageNumber by remember { mutableStateOf(true) }
+    val readerPrefs = remember { context.getSharedPreferences("mangalore_reader_prefs", Context.MODE_PRIVATE) }
+    var zoomImages by remember { mutableStateOf(readerPrefs.getBoolean("zoomImages", false)) }
+    var keepScreenOn by remember { mutableStateOf(readerPrefs.getBoolean("keepScreenOn", true)) }
+    var showPageNumber by remember { mutableStateOf(readerPrefs.getBoolean("showPageNumber", true)) }
     var autoScrollEnabled by remember { mutableStateOf(false) }
-    var autoScrollSpeed by remember { mutableStateOf(1) }
-    var tapNav by remember { mutableStateOf(true) }
+    var autoScrollSpeed by remember { mutableStateOf(readerPrefs.getInt("autoScrollSpeed", 1)) }
+    var tapNav by remember { mutableStateOf(readerPrefs.getBoolean("tapNav", false)) }
     var showSpeedPicker by remember { mutableStateOf(false) }
     var failedImageUrls by remember { mutableStateOf<Set<String>>(emptySet()) }
     var retryingAll by remember { mutableStateOf(false) }
@@ -2302,9 +2413,9 @@ private fun ReaderScreen(
                                     val edgeH = size.height * 0.28f
                                     when {
                                         // المنطقة السفلية = تمرير للأسفل
-                                        tap.y > size.height - edgeH -> scope.launch { listState.animateScrollBy(size.height.toFloat()) }
+                                        tap.y > size.height - edgeH -> scope.launch { listState.animateScrollBy(size.height * 0.72f, tween(450)) }
                                         // المنطقة العلوية = تمرير للأعلى
-                                        tap.y < edgeH -> scope.launch { listState.animateScrollBy(-size.height.toFloat()) }
+                                        tap.y < edgeH -> scope.launch { listState.animateScrollBy(-size.height * 0.72f, tween(450)) }
                                         // المنطقة الوسطى = إظهار/إخفاء القائمة
                                         else -> bars = !bars
                                     }
@@ -2380,7 +2491,7 @@ private fun ReaderScreen(
                     Text("طولي أو عرضي", color = TextSec, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp))
                     Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp).background(Color.Black, RoundedCornerShape(14.dp)).padding(4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         listOf("طولي", "عرضي").forEach { option ->
-                            Box(Modifier.weight(1f).clip(RoundedCornerShape(10.dp)).background(if (readingMode == option) accent else Color.Transparent).clickable { readingMode = option }.padding(vertical = 12.dp), Alignment.Center) { Text(option, color = Color.White, fontSize = 14.sp) }
+                            Box(Modifier.weight(1f).clip(RoundedCornerShape(10.dp)).background(if (readingMode == option) accent else Color.Transparent).clickable { readingMode = option; readerPrefs.edit().putString("readingMode", option).apply() }.padding(vertical = 12.dp), Alignment.Center) { Text(option, color = Color.White, fontSize = 14.sp) }
                         }
                     }
                     if (readingMode == "عرضي") {
@@ -2389,19 +2500,19 @@ private fun ReaderScreen(
                         Text("للقراءة العرضية", color = TextSec, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 20.dp, vertical = 0.dp))
                         Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp).background(Color.Black, RoundedCornerShape(14.dp)).padding(4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             listOf("يمين لليسار", "يسار لليمين").forEach { option ->
-                                Box(Modifier.weight(1f).clip(RoundedCornerShape(10.dp)).background(if (horizontalDirection == option) accent else Color.Transparent).clickable { horizontalDirection = option }.padding(vertical = 12.dp), Alignment.Center) { Text(option, color = Color.White, fontSize = 13.sp) }
+                                Box(Modifier.weight(1f).clip(RoundedCornerShape(10.dp)).background(if (horizontalDirection == option) accent else Color.Transparent).clickable { horizontalDirection = option; readerPrefs.edit().putString("horizontalDirection", option).apply() }.padding(vertical = 12.dp), Alignment.Center) { Text(option, color = Color.White, fontSize = 13.sp) }
                             }
                         }
                     }
                     D2()
                     Text("أثناء القراءة", color = accent, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp))
-                    SToggle("التنقل بالضغط", "اضغط أعلى/أسفل الشاشة للتمرير، والوسط لإظهار القائمة", tapNav) { tapNav = it }
+                    SToggle("التنقل بالضغط", "اضغط أعلى/أسفل الشاشة للتمرير، والوسط لإظهار القائمة", tapNav) { tapNav = it; readerPrefs.edit().putBoolean("tapNav", it).apply() }
                     D2()
-                    SToggle("التكبير", "تفعيل تكبير الصور", zoomImages) { zoomImages = it }
+                    SToggle("التكبير", "تفعيل تكبير الصور", zoomImages) { zoomImages = it; readerPrefs.edit().putBoolean("zoomImages", it).apply() }
                     D2()
-                    SToggle("إبقاء الشاشة مضاءة", "منع إطفاء الشاشة أثناء القراءة", keepScreenOn) { keepScreenOn = it }
+                    SToggle("إبقاء الشاشة مضاءة", "منع إطفاء الشاشة أثناء القراءة", keepScreenOn) { keepScreenOn = it; readerPrefs.edit().putBoolean("keepScreenOn", it).apply() }
                     D2()
-                    SToggle("رقم الصفحة", "إظهار رقم الصفحة الحالية أسفل الشاشة", showPageNumber) { showPageNumber = it }
+                    SToggle("رقم الصفحة", "إظهار رقم الصفحة الحالية أسفل الشاشة", showPageNumber) { showPageNumber = it; readerPrefs.edit().putBoolean("showPageNumber", it).apply() }
                 }
             }
         }
