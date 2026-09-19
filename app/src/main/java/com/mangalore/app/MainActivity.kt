@@ -179,6 +179,16 @@ private fun formatRelativeDate(raw: String): String {
     }
 }
 
+// ── تحويل رمز لغة/نوع العمل إلى تسمية عربية صحيحة ──────────────
+private fun originLabel(raw: String): String = when (raw.trim().lowercase()) {
+    "ja", "japanese", "manga"           -> "مانجا (يابانية)"
+    "ko", "korean", "manhwa"            -> "مانهوا (كورية)"
+    "zh", "zh-hk", "zh-ro", "chinese",
+    "manhua"                            -> "مانهوا (صينية)"
+    "en", "english"                     -> "كوميك (إنجليزي)"
+    else                                -> raw
+}
+
 private fun readSavedComments(context: Context, url: String): List<String> {
     val prefs = context.getSharedPreferences("mangalore_comments", Context.MODE_PRIVATE)
     val encoded = prefs.getString(commentsKey(url), null)
@@ -622,7 +632,8 @@ private fun App(oauthTick: Int = 0) {
                             onContinue = { saved ->
                                 if (saved.chapterIndex in saved.manga.chapters.indices)
                                     push(Dest.Reader(saved.manga.chapters[saved.chapterIndex].url, "الفصل ${saved.manga.chapters[saved.chapterIndex].number}", saved.manga, saved.chapterIndex, saved.page))
-                            }
+                            },
+                            onHistory = { push(Dest.History) }
                         ) { push(Dest.Detail(it)) }
                         is Dest.Search -> SearchScreen(accent, ::pop) { push(Dest.Detail(it)) }
                         is Dest.AllManga -> MangaListScreen("كل المانجا", accent, ::pop, { Scraper.fetchAll(it) }) { push(Dest.Detail(it)) }
@@ -969,6 +980,7 @@ private fun HomeScreen(
     accent: Color, onMenu: () -> Unit, onSearch: () -> Unit,
     hist: List<ReadingProgress> = emptyList(),
     onContinue: (ReadingProgress) -> Unit = {},
+    onHistory: () -> Unit = {},
     onPick: (MangaItem) -> Unit
 ) {
     var tab     by remember { mutableStateOf(0) }
@@ -1192,9 +1204,9 @@ private fun HomeScreen(
             ) {
                 Surface(
                     color = Surface2,
-                    shape = RoundedCornerShape(20.dp),
+                    shape = RoundedCornerShape(22.dp),
                     border = BorderStroke(1.dp, Border),
-                    shadowElevation = 6.dp,
+                    shadowElevation = 8.dp,
                     modifier = Modifier.pointerInput(lastRead) {
                         detectTapGestures(
                             onTap = { onContinue(lastRead) },
@@ -1203,12 +1215,12 @@ private fun HomeScreen(
                     }
                 ) {
                     Row(
-                        Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                        Modifier.padding(horizontal = 20.dp, vertical = 14.dp),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(7.dp)
+                        horizontalArrangement = Arrangement.spacedBy(9.dp)
                     ) {
-                        Icon(Icons.Default.PlayCircle, null, tint = accent, modifier = Modifier.size(18.dp))
-                        Text("متابعة", color = TextPri, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        Icon(Icons.Default.PlayCircle, null, tint = accent, modifier = Modifier.size(22.dp))
+                        Text("متابعة", color = TextPri, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
@@ -1224,7 +1236,7 @@ private fun HomeScreen(
             ) {
                 Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
                     Text(
-                        "آخر المانجا المقروءة",
+                        "آخر ثلاث مانجات مقروءة",
                         color = TextPri, fontSize = 17.sp, fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp)
                     )
@@ -1249,6 +1261,26 @@ private fun HomeScreen(
                             Icon(Icons.Default.PlayArrow, null, tint = accent, modifier = Modifier.size(20.dp))
                         }
                         HorizontalDivider(color = Border.copy(.5f))
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Surface(
+                        color = Surface3,
+                        shape = RoundedCornerShape(14.dp),
+                        border = BorderStroke(1.dp, Border),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp)
+                            .clickable { showRecentSheet = false; onHistory() }
+                    ) {
+                        Row(
+                            Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Icon(Icons.Default.History, null, tint = accent, modifier = Modifier.size(20.dp))
+                            Text("التوجه إلى السجل", color = TextPri, fontSize = 14.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+                            Icon(Icons.Default.ChevronLeft, null, tint = TextDim, modifier = Modifier.size(20.dp))
+                        }
                     }
                 }
             }
@@ -1678,7 +1710,7 @@ private fun DetailScreen(
                         val na = "غير متوفر"
                         IRow("المؤلف", d.author.ifEmpty { na }, dimValue = d.author.isEmpty())
                         IRow("الرسام", d.artist.ifEmpty { na }, dimValue = d.artist.isEmpty())
-                        IRow("نوع العمل", d.origin.ifEmpty { na }, dimValue = d.origin.isEmpty())
+                        IRow("نوع العمل", if (d.origin.isNotEmpty()) originLabel(d.origin) else na, dimValue = d.origin.isEmpty())
                         IRow("السنة", d.releaseYear.ifEmpty { na }, dimValue = d.releaseYear.isEmpty())
                         IRow("الحالة", d.status.ifEmpty { na }, last = true, dimValue = d.status.isEmpty())
                     }
@@ -2267,12 +2299,13 @@ private fun ReaderScreen(
                         modifier = Modifier.fillMaxSize().pointerInput(tapNav) {
                             detectTapGestures { tap ->
                                 if (tapNav) {
-                                    val edgeW = size.width * 0.28f
+                                    val edgeH = size.height * 0.28f
                                     when {
-                                        // اليسار (end في RTL) = التقدم للأمام
-                                        tap.x < edgeW -> scope.launch { listState.animateScrollBy(size.height.toFloat()) }
-                                        // اليمين (start في RTL) = الرجوع للخلف
-                                        tap.x > size.width - edgeW -> scope.launch { listState.animateScrollBy(-size.height.toFloat()) }
+                                        // المنطقة السفلية = تمرير للأسفل
+                                        tap.y > size.height - edgeH -> scope.launch { listState.animateScrollBy(size.height.toFloat()) }
+                                        // المنطقة العلوية = تمرير للأعلى
+                                        tap.y < edgeH -> scope.launch { listState.animateScrollBy(-size.height.toFloat()) }
+                                        // المنطقة الوسطى = إظهار/إخفاء القائمة
                                         else -> bars = !bars
                                     }
                                 } else bars = !bars
@@ -2362,6 +2395,8 @@ private fun ReaderScreen(
                     }
                     D2()
                     Text("أثناء القراءة", color = accent, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp))
+                    SToggle("التنقل بالضغط", "اضغط أعلى/أسفل الشاشة للتمرير، والوسط لإظهار القائمة", tapNav) { tapNav = it }
+                    D2()
                     SToggle("التكبير", "تفعيل تكبير الصور", zoomImages) { zoomImages = it }
                     D2()
                     SToggle("إبقاء الشاشة مضاءة", "منع إطفاء الشاشة أثناء القراءة", keepScreenOn) { keepScreenOn = it }
@@ -3281,7 +3316,7 @@ private fun DownloadedMangaScreen(group: DownloadGroup, accent: Color, onBack: (
                     AsyncImage(model = liveGroup.cover, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.size(112.dp, 164.dp).clip(RoundedCornerShape(14.dp)))
                     Column(Modifier.padding(start = 14.dp).weight(1f)) {
                         Text(liveGroup.title, color = TextPri, fontSize = 20.sp, fontWeight = FontWeight.Bold, fontFamily = Font)
-                        if (liveGroup.origin.isNotBlank()) Text(liveGroup.origin, color = accent, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp))
+                        if (liveGroup.origin.isNotBlank()) Text(originLabel(liveGroup.origin), color = accent, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp))
                         if (liveGroup.author.isNotBlank()) Text("المؤلف: ${liveGroup.author}", color = TextSec, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
                         if (liveGroup.artist.isNotBlank()) Text("الرسام: ${liveGroup.artist}", color = TextSec, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
                         if (liveGroup.status.isNotBlank()) Text("الحالة: ${liveGroup.status}", color = TextSec, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
