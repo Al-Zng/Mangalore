@@ -530,6 +530,15 @@ private fun App(oauthTick: Int = 0) {
     var pendingDownload by remember { mutableStateOf<PendingDownload?>(null) }
     var readerRefresh by remember { mutableIntStateOf(0) }
     var toast   by remember { mutableStateOf("") }
+    var appUpdates by remember { mutableStateOf<List<AppUpdate>>(emptyList()) }
+    var updatePopup by remember { mutableStateOf<AppUpdate?>(null) }
+    val updatePrefs = remember { context.getSharedPreferences("mangalore_update_preferences", Context.MODE_PRIVATE) }
+    LaunchedEffect(signedIn, guestMode) {
+        runCatching { CloudStore.publishedUpdates() }.onSuccess { updates ->
+            appUpdates = updates
+            updatePopup = updates.firstOrNull { !updatePrefs.getBoolean("dismiss_${it.id}", false) }
+        }
+    }
     LaunchedEffect(authNotice) {
         if (authNotice.isNotBlank()) {
             toast = authNotice
@@ -686,6 +695,13 @@ private fun App(oauthTick: Int = 0) {
                             toast = "✓ بدأ تنزيل الفصول"
                         }
                     }
+                }
+
+                updatePopup?.let { update ->
+                    UpdatePopup(update, accent, onDismiss = { updatePopup = null }, onNeverShow = {
+                        updatePrefs.edit().putBoolean("dismiss_${update.id}", true).apply()
+                        updatePopup = null
+                    })
                 }
 
                 // ── Toast ─────────────────────────────────────
@@ -2526,14 +2542,39 @@ private fun ProfileStat(label: String, value: String, modifier: Modifier) {
 }
 
 @Composable
+private fun UpdatePopup(update: AppUpdate, accent: Color, onDismiss: () -> Unit, onNeverShow: () -> Unit) {
+    var checked by remember { mutableStateOf(false) }
+    AlertDialog(onDismissRequest = onDismiss, containerColor = Surface2,
+        title = { Text(update.title, color = TextPri, fontWeight = FontWeight.Bold) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (update.imageUrl.isNotBlank()) AsyncImage(update.imageUrl, update.title, Modifier.fillMaxWidth().heightIn(max = 190.dp).clip(RoundedCornerShape(12.dp)), contentScale = ContentScale.Crop)
+                Text(update.body, color = TextSec, lineHeight = 22.sp)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked, { checked = it }, colors = CheckboxDefaults.colors(checkedColor = accent))
+                    Text("لا تظهر مجدداً", color = TextSec, fontSize = 12.sp)
+                }
+            }
+        },
+        confirmButton = { Button({ if (checked) onNeverShow() else onDismiss() }, colors = ButtonDefaults.buttonColors(containerColor = accent), shape = ButtonShape) { Text("حسناً", color = Color.White) } }
+    )
+}
+
+@Composable
 private fun AdminScreen(accent: Color, onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
     var users by remember { mutableStateOf<List<AdminUser>>(emptyList()) }
+    var updates by remember { mutableStateOf<List<AppUpdate>>(emptyList()) }
+    var updateTitle by remember { mutableStateOf("") }
+    var updateImage by remember { mutableStateOf("") }
+    var updateBody by remember { mutableStateOf("") }
+    var updateAmount by remember { mutableStateOf("1") }
+    var updateUnit by remember { mutableStateOf("أيام") }
     var loading by remember { mutableStateOf(true) }
     var notice by remember { mutableStateOf("") }
     var query by remember { mutableStateOf("") }
     var bannedOnly by remember { mutableStateOf(false) }
-    fun refresh() { scope.launch { loading = true; runCatching { CloudStore.adminUsers() }.onSuccess { users = it }.onFailure { notice = it.message.orEmpty() }; loading = false } }
+    fun refresh() { scope.launch { loading = true; runCatching { CloudStore.adminUsers() }.onSuccess { users = it }.onFailure { notice = it.message.orEmpty() }; runCatching { CloudStore.adminUpdates() }.onSuccess { updates = it }; loading = false } }
     LaunchedEffect(Unit) { refresh() }
     val visibleUsers = users.filter { user ->
         (!bannedOnly || user.banned) && (query.isBlank() || user.name.contains(query, true) || user.email.contains(query, true))
@@ -2546,6 +2587,29 @@ private fun AdminScreen(accent: Color, onBack: () -> Unit) {
         if (loading) Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator(color = accent) }
         else LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             item {
+                Text("تحديثات التطبيق", color = TextPri, fontSize = 19.sp, fontWeight = FontWeight.Bold)
+                Text("أنشئ إعلاناً يظهر للمستخدمين ضمن المدة المحددة", color = TextSec, fontSize = 12.sp)
+                OutlinedTextField(updateTitle, { updateTitle = it }, label = { Text("عنوان التحديث") }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
+                OutlinedTextField(updateImage, { updateImage = it }, label = { Text("رابط الصورة (اختياري)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(updateBody, { updateBody = it }, label = { Text("نص التحديث") }, minLines = 3, modifier = Modifier.fillMaxWidth())
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(updateAmount, { updateAmount = it.filter(Char::isDigit) }, label = { Text("ينتهي بعد") }, singleLine = true, modifier = Modifier.weight(1f))
+                    Box(Modifier.weight(1f)) {
+                        var expanded by remember { mutableStateOf(false) }
+                        OutlinedButton({ expanded = true }, Modifier.fillMaxWidth()) { Text(updateUnit, color = TextPri); DropdownMenu(expanded, { expanded = false }) { listOf("دقائق", "ساعات", "أيام").forEach { unit -> DropdownMenuItem({ Text(unit) }, { updateUnit = unit; expanded = false }) } } }
+                    }
+                }
+                Button({
+                    val amount = updateAmount.toLongOrNull()?.coerceAtLeast(1) ?: 1
+                    val millis = when (updateUnit) { "دقائق" -> amount * 60_000L; "ساعات" -> amount * 3_600_000L; else -> amount * 86_400_000L }
+                    val fmt = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX", Locale.US)
+                    val now = System.currentTimeMillis()
+                    scope.launch { runCatching { CloudStore.adminCreateUpdate(updateTitle, updateImage, updateBody, fmt.format(java.util.Date(now)), fmt.format(java.util.Date(now + millis))) }.onSuccess { updateTitle = ""; updateImage = ""; updateBody = ""; refresh() }.onFailure { notice = it.message.orEmpty() } }
+                }, enabled = updateTitle.isNotBlank() && updateBody.isNotBlank(), colors = ButtonDefaults.buttonColors(containerColor = accent), shape = ButtonShape) { Text("نشر التحديث", color = Color.White) }
+                updates.forEach { update ->
+                    Surface(color = Surface2, shape = InputShape, modifier = Modifier.fillMaxWidth()) { Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) { Column(Modifier.weight(1f)) { Text(update.title, color = TextPri, fontWeight = FontWeight.SemiBold); Text("ينتهي: ${update.endsAt.take(16).replace('T', ' ')}", color = TextDim, fontSize = 10.sp) }; IconButton({ scope.launch { runCatching { CloudStore.adminDeleteUpdate(update.id) }; refresh() } }) { Icon(Icons.Default.DeleteOutline, "حذف", tint = Red) } } }
+                }
+                HorizontalDivider(color = Border, modifier = Modifier.padding(vertical = 12.dp))
                 Text("إدارة الحسابات", color = TextPri, fontSize = 19.sp, fontWeight = FontWeight.Bold)
                 Text("${users.size} حساب · ${users.count { it.banned }} محظور · ${users.count { !it.banned }} نشط", color = TextSec, fontSize = 12.sp)
                 OutlinedTextField(

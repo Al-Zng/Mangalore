@@ -10,6 +10,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 data class AdminUser(val id: String, val email: String, val name: String, val avatar: String, val createdAt: String, val banned: Boolean)
+data class AppUpdate(val id: String, val title: String, val imageUrl: String, val body: String, val startsAt: String, val endsAt: String)
 data class CommentRecord(val id: String, val userId: String, val name: String, val avatar: String, val content: String, val parentId: String?, val spoiler: Boolean, val createdAt: String, val verified: Boolean = false)
 
 object CloudStore {
@@ -17,6 +18,22 @@ object CloudStore {
     private const val KEY = "sb_publishable_HA8TWsQQG8IjQHko1JVwJA_IHFgUAk-"
     private val http = OkHttpClient()
     private val json = "application/json; charset=utf-8".toMediaType()
+
+    suspend fun publishedUpdates(): List<AppUpdate> {
+        val arr = JSONArray(call("/rest/v1/app_updates?select=id,title,image_url,body,starts_at,ends_at&starts_at=lte.now()&or=(ends_at.is.null,ends_at.gte.now())&order=created_at.desc", "GET"))
+        return (0 until arr.length()).mapNotNull { i -> arr.optJSONObject(i)?.let { o -> AppUpdate(o.optString("id"), o.optString("title"), o.optString("image_url"), o.optString("body"), o.optString("starts_at"), o.optString("ends_at")) } }
+    }
+
+    suspend fun adminUpdates(): List<AppUpdate> {
+        val arr = JSONArray(call("/rest/v1/app_updates?select=id,title,image_url,body,starts_at,ends_at&order=created_at.desc", "GET"))
+        return (0 until arr.length()).mapNotNull { i -> arr.optJSONObject(i)?.let { o -> AppUpdate(o.optString("id"), o.optString("title"), o.optString("image_url"), o.optString("body"), o.optString("starts_at"), o.optString("ends_at")) } }
+    }
+
+    suspend fun adminCreateUpdate(title: String, imageUrl: String, body: String, startsAt: String, endsAt: String) {
+        call("/rest/v1/app_updates", "POST", JSONObject().put("title", title.trim()).put("image_url", imageUrl.trim()).put("body", body.trim()).put("starts_at", startsAt).put("ends_at", endsAt).put("created_by", AuthStore.userId).toString())
+    }
+
+    suspend fun adminDeleteUpdate(id: String) { call("/rest/v1/app_updates?id=eq.${java.net.URLEncoder.encode(id, "UTF-8")}", "DELETE") }
 
     private suspend fun call(path: String, method: String, body: String? = null): String = withContext(Dispatchers.IO) {
         val b = Request.Builder().url(BASE + path).header("apikey", KEY).header("Authorization", "Bearer ${AuthStore.accessToken}").header("Accept", "application/json")
