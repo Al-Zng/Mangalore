@@ -52,7 +52,7 @@ import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.*
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
@@ -1061,7 +1061,18 @@ private fun HomeScreen(
 
         // ── Most popular hero ─────────────────────────────────
         if (feature != null) item(span = { GridItemSpan(3) }) {
-            Box(Modifier.fillMaxWidth()) {
+            Box(
+                Modifier.layout { measurable, constraints ->
+                    // Break out of the grid's 14dp horizontal content padding
+                    val sidePx = 14.dp.roundToPx()
+                    val placeable = measurable.measure(
+                        constraints.copy(maxWidth = constraints.maxWidth + sidePx * 2)
+                    )
+                    layout(placeable.width, placeable.height) {
+                        placeable.place(-sidePx, 0)
+                    }
+                }
+            ) {
                 AnimatedContent(
                     targetState = feature,
                     transitionSpec = { fadeIn(tween(500)) togetherWith fadeOut(tween(350)) },
@@ -1071,6 +1082,19 @@ private fun HomeScreen(
                         Modifier
                             .fillMaxWidth()
                             .height(260.dp)
+                            .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                            .drawWithContent {
+                                drawContent()
+                                // Bottom fade: alpha mask fades the hero into the background
+                                drawRect(
+                                    brush = Brush.verticalGradient(
+                                        0f to Color.Black,
+                                        0.68f to Color.Black,
+                                        1f to Color.Transparent
+                                    ),
+                                    blendMode = BlendMode.DstIn
+                                )
+                            }
                             .clickable { onPick(heroItem) }
                     ) {
                         // Blurred background cover
@@ -1079,13 +1103,13 @@ private fun HomeScreen(
                             Modifier.fillMaxSize().blur(24.dp),
                             ContentScale.Crop
                         )
-                        // Gradient overlay
+                        // Gradient overlay - lighter now that bottom fade handles blending
                         Box(
                             Modifier.matchParentSize().background(
                                 Brush.verticalGradient(
-                                    0f to Color.Black.copy(.25f),
-                                    .45f to Color.Black.copy(.55f),
-                                    1f to Color.Black.copy(.92f)
+                                    0f to Color.Black.copy(.15f),
+                                    .40f to Color.Black.copy(.45f),
+                                    1f to Color.Black.copy(.80f)
                                 )
                             )
                         )
