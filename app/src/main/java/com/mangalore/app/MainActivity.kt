@@ -572,8 +572,8 @@ private fun App(oauthTick: Int = 0) {
             LaunchedEffect(drawer) {
                 if (drawer) drawerState.open() else drawerState.close()
             }
-            LaunchedEffect(drawerState.isOpen) {
-                if (!drawerState.isOpen && drawer) drawer = false
+            LaunchedEffect(drawerState.currentValue) {
+                if (drawerState.currentValue == DrawerValue.Closed && drawer) drawer = false
             }
             ModalNavigationDrawer(
                 drawerState = drawerState,
@@ -2824,7 +2824,7 @@ private fun SettingsScreen(accent:Color, amoled:Boolean, onAmoled:(Boolean)->Uni
 @Composable
 private fun Drawer(accent:Color, cur:Dest, onClose:()->Unit, onNav:(String)->Unit) {
     Box(Modifier.fillMaxSize()) {
-        Surface(Modifier.fillMaxHeight().width(296.dp).align(Alignment.CenterStart).pointerInput(Unit){detectTapGestures{}},
+                        Surface(Modifier.fillMaxHeight().width(296.dp).align(Alignment.CenterStart),
             color=Bg, shadowElevation=8.dp) {
             Column(Modifier.fillMaxSize()) {
                 // Header
