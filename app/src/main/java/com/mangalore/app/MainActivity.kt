@@ -76,7 +76,7 @@ import org.json.JSONArray
 // ══════════════════════════════════════════════════════════════
 private val Black    = Color(0xFF000000)
 private val Bg       = Color(0xFF101727)
-private val Surface2 = Color(0xFF16161A)
+private val Surface2 = Color(0xFF283140)
 private val Surface3 = Color(0xFF1E1E24)
 private val Border   = Color(0xFF2A2A32)
 private val TextPri  = Color(0xFFF0F0F3)
