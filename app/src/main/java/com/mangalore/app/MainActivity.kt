@@ -961,17 +961,19 @@ private fun HomeScreen(accent: Color, onMenu: () -> Unit, onSearch: () -> Unit, 
     val scope   = rememberCoroutineScope()
     var latest  by remember { mutableStateOf<List<MangaItem>>(emptyList()) }
     var popular by remember { mutableStateOf<List<MangaItem>>(emptyList()) }
+    var heroIndex by remember { mutableIntStateOf(0) }
     var loading by remember { mutableStateOf(true) }
     var error   by remember { mutableStateOf(false) }
 
     fun load() { loading = true; error = false
         scope.launch {
             val home = Scraper.fetchHome()
+            val popularSource = Scraper.fetchPopular()
             if (home.isNotEmpty()) {
                 latest = home
-                popular = home.sortedByDescending { it.score }
+                popular = popularSource.ifEmpty { home.sortedByDescending { it.score } }
             } else {
-                val l = Scraper.fetchLatest(); val p = Scraper.fetchPopular()
+                val l = Scraper.fetchLatest(); val p = popularSource
                 if (l.isEmpty() && p.isEmpty()) error = true
                 else { latest = l; popular = p.ifEmpty { l } }
             }
@@ -979,9 +981,16 @@ private fun HomeScreen(accent: Color, onMenu: () -> Unit, onSearch: () -> Unit, 
         }
     }
     LaunchedEffect(Unit) { load() }
+    LaunchedEffect(popular) {
+        heroIndex = 0
+        while (popular.size > 1) {
+            kotlinx.coroutines.delay(5000L)
+            heroIndex = (heroIndex + 1) % popular.size
+        }
+    }
 
     val list    = if (tab == 1) popular else latest
-    val feature = popular.firstOrNull()
+    val feature = popular.getOrNull(heroIndex)
 
     Box(Modifier.fillMaxSize()) {
         LazyVerticalGrid(
@@ -1028,7 +1037,7 @@ private fun HomeScreen(accent: Color, onMenu: () -> Unit, onSearch: () -> Unit, 
                         Text("الأكثر شعبية", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         Text(feature.title, color = TextPri, fontSize = 17.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         if (feature.latestChapter.isNotBlank()) Text(feature.latestChapter, color = TextSec, fontSize = 11.sp)
-                        Button({ onPick(feature) }, colors = ButtonDefaults.buttonColors(containerColor = accent), shape = ButtonShape, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)) { Icon(Icons.Default.PlayArrow, null, Modifier.size(15.dp)); Spacer(Modifier.width(4.dp)); Text("ابدأ القراءة", fontSize = 12.sp, color = Color.White) }
+                        Button({ onPick(feature) }, colors = ButtonDefaults.buttonColors(containerColor = accent, contentColor = Color.White), shape = ButtonShape, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)) { Icon(Icons.Default.PlayArrow, null, Modifier.size(15.dp)); Spacer(Modifier.width(4.dp)); Text("ابدأ القراءة", fontSize = 12.sp, color = Color.White) }
                     }
                 }
             }
@@ -1969,19 +1978,19 @@ private fun DetailScreen(
                         Text("غلاف المانجا", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                     }
                     Box(Modifier.weight(1f).fillMaxWidth(), Alignment.Center) { AsyncImage(cover, "غلاف ${d.title}", Modifier.fillMaxWidth().heightIn(max = 620.dp), contentScale = ContentScale.Fit) }
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(Modifier.fillMaxWidth().padding(bottom = 32.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Button({
                             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
                             clipboard.setPrimaryClip(ClipData.newRawUri("غلاف المانجا", Uri.parse(cover)))
                             Toast.makeText(context, "تم نسخ رابط الغلاف", Toast.LENGTH_SHORT).show()
-                        }, Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Surface3), shape = ButtonShape) { Icon(Icons.Default.ContentCopy, null); Spacer(Modifier.width(5.dp)); Text("نسخ") }
+                        }, Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Surface3, contentColor = Color.White), shape = ButtonShape) { Icon(Icons.Default.ContentCopy, null); Spacer(Modifier.width(5.dp)); Text("نسخ", color = Color.White) }
                         Button({
                             runCatching {
                                 val request = DownloadManager.Request(Uri.parse(cover)).setTitle(d.title).setDescription("غلاف المانجا").setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED).setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "${d.slug.ifBlank { "manga" }}.jpg")
                                 (context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager).enqueue(request)
                                 Toast.makeText(context, "بدأ تنزيل الغلاف", Toast.LENGTH_SHORT).show()
                             }.onFailure { Toast.makeText(context, "تعذر تنزيل الغلاف", Toast.LENGTH_SHORT).show() }
-                        }, Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = accent), shape = ButtonShape) { Icon(Icons.Default.Download, null); Spacer(Modifier.width(5.dp)); Text("تنزيل") }
+                        }, Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = accent, contentColor = Color.White), shape = ButtonShape) { Icon(Icons.Default.Download, null); Spacer(Modifier.width(5.dp)); Text("تنزيل", color = Color.White) }
                     }
                 }
             }
