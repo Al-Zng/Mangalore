@@ -615,7 +615,14 @@ private fun App(oauthTick: Int = 0) {
                     label = "rtl-screen-transition"
                 ) { d ->
                     when (d) {
-                        is Dest.Home -> HomeScreen(accent, { drawer = true }, { push(Dest.Search) }) { push(Dest.Detail(it)) }
+                        is Dest.Home -> HomeScreen(
+                            accent, { drawer = true }, { push(Dest.Search) },
+                            hist = hist,
+                            onContinue = { saved ->
+                                if (saved.chapterIndex in saved.manga.chapters.indices)
+                                    push(Dest.Reader(saved.manga.chapters[saved.chapterIndex].url, "الفصل ${saved.manga.chapters[saved.chapterIndex].number}", saved.manga, saved.chapterIndex, saved.page))
+                            }
+                        ) { push(Dest.Detail(it)) }
                         is Dest.Search -> SearchScreen(accent, ::pop) { push(Dest.Detail(it)) }
                         is Dest.AllManga -> MangaListScreen("كل المانجا", accent, ::pop, { Scraper.fetchAll(it) }) { push(Dest.Detail(it)) }
                         is Dest.LatestManga -> MangaListScreen("أحدث المانجا", accent, ::pop, { Scraper.fetchLatest(it) }) { push(Dest.Detail(it)) }
@@ -956,9 +963,17 @@ private fun GoogleAuthDialog(onSigned: (Uri) -> Unit, onDismiss: () -> Unit) {
 // HOME SCREEN
 // ══════════════════════════════════════════════════════════════
 @Composable
-private fun HomeScreen(accent: Color, onMenu: () -> Unit, onSearch: () -> Unit, onPick: (MangaItem) -> Unit) {
+private fun HomeScreen(
+    accent: Color, onMenu: () -> Unit, onSearch: () -> Unit,
+    hist: List<ReadingProgress> = emptyList(),
+    onContinue: (ReadingProgress) -> Unit = {},
+    onPick: (MangaItem) -> Unit
+) {
     var tab     by remember { mutableStateOf(0) }
     val scope   = rememberCoroutineScope()
+    var showRecentSheet by remember { mutableStateOf(false) }
+    val lastRead = hist.firstOrNull()
+    val recentThree = hist.take(3)
     var latest  by remember { mutableStateOf<List<MangaItem>>(emptyList()) }
     var popular by remember { mutableStateOf<List<MangaItem>>(emptyList()) }
     var heroIndex by remember { mutableIntStateOf(0) }
@@ -1162,6 +1177,78 @@ private fun HomeScreen(accent: Color, onMenu: () -> Unit, onSearch: () -> Unit, 
                     )
                 }
                 IconButton(onSearch) { Icon(Icons.Default.Search, null, tint = TextPri) }
+            }
+        }
+
+        // ── زر متابعة (bottom-start) ───────────────────────────
+        if (lastRead != null) {
+            Box(
+                Modifier
+                    .align(Alignment.BottomStart)
+                    .navigationBarsPadding()
+                    .padding(start = 16.dp, bottom = 20.dp)
+            ) {
+                Surface(
+                    color = Surface2,
+                    shape = RoundedCornerShape(20.dp),
+                    border = BorderStroke(1.dp, Border),
+                    shadowElevation = 6.dp,
+                    modifier = Modifier.pointerInput(lastRead) {
+                        detectTapGestures(
+                            onTap = { onContinue(lastRead) },
+                            onLongPress = { showRecentSheet = true }
+                        )
+                    }
+                ) {
+                    Row(
+                        Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(7.dp)
+                    ) {
+                        Icon(Icons.Default.PlayCircle, null, tint = accent, modifier = Modifier.size(18.dp))
+                        Text("متابعة", color = TextPri, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            }
+        }
+
+        // ── Sheet اختيار من آخر 3 مانجا ──────────────────────
+        if (showRecentSheet) {
+            ModalBottomSheet(
+                onDismissRequest = { showRecentSheet = false },
+                containerColor = Surface2,
+                contentColor = TextPri,
+                dragHandle = { BottomSheetDefaults.DragHandle(color = TextDim) }
+            ) {
+                Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
+                    Text(
+                        "آخر المانجا المقروءة",
+                        color = TextPri, fontSize = 17.sp, fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp)
+                    )
+                    recentThree.forEach { rp ->
+                        val ch = rp.manga.chapters.getOrNull(rp.chapterIndex)
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .clickable { showRecentSheet = false; onContinue(rp) }
+                                .padding(horizontal = 16.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Box(Modifier.size(52.dp, 74.dp).clip(RoundedCornerShape(10.dp))) {
+                                Img(rp.manga.coverUrl, Modifier.fillMaxSize())
+                            }
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(rp.manga.title, color = TextPri, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                if (ch != null)
+                                    Text("الفصل ${ch.number} · ص${rp.page}", color = accent, fontSize = 12.sp)
+                            }
+                            Icon(Icons.Default.PlayArrow, null, tint = accent, modifier = Modifier.size(20.dp))
+                        }
+                        HorizontalDivider(color = Border.copy(.5f))
+                    }
+                }
             }
         }
     }
@@ -1972,25 +2059,35 @@ private fun DetailScreen(
         val cover = d.coverFull.ifEmpty { d.coverUrl }
         Dialog(onDismissRequest = { showCoverFullScreen = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
             Surface(Modifier.fillMaxSize(), color = Color.Black) {
-                Column(Modifier.fillMaxSize().padding(18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Column(Modifier.fillMaxSize().systemBarsPadding().padding(horizontal = 18.dp, vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         IconButton({ showCoverFullScreen = false }) { Icon(Icons.Default.Close, "إغلاق", tint = Color.White) }
                         Text("غلاف المانجا", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                     }
-                    Box(Modifier.weight(1f).fillMaxWidth(), Alignment.Center) { AsyncImage(cover, "غلاف ${d.title}", Modifier.fillMaxWidth().heightIn(max = 620.dp), contentScale = ContentScale.Fit) }
-                    Row(Modifier.fillMaxWidth().padding(bottom = 32.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Button({
-                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                            clipboard.setPrimaryClip(ClipData.newRawUri("غلاف المانجا", Uri.parse(cover)))
-                            Toast.makeText(context, "تم نسخ رابط الغلاف", Toast.LENGTH_SHORT).show()
-                        }, Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Surface3, contentColor = Color.White), shape = ButtonShape) { Icon(Icons.Default.ContentCopy, null); Spacer(Modifier.width(5.dp)); Text("نسخ", color = Color.White) }
-                        Button({
-                            runCatching {
-                                val request = DownloadManager.Request(Uri.parse(cover)).setTitle(d.title).setDescription("غلاف المانجا").setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED).setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "${d.slug.ifBlank { "manga" }}.jpg")
-                                (context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager).enqueue(request)
-                                Toast.makeText(context, "بدأ تنزيل الغلاف", Toast.LENGTH_SHORT).show()
-                            }.onFailure { Toast.makeText(context, "تعذر تنزيل الغلاف", Toast.LENGTH_SHORT).show() }
-                        }, Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = accent, contentColor = Color.White), shape = ButtonShape) { Icon(Icons.Default.Download, null); Spacer(Modifier.width(5.dp)); Text("تنزيل", color = Color.White) }
+                    Spacer(Modifier.height(12.dp))
+                    // الصورة + الأزرار مجمّعة في وسط الشاشة
+                    Box(Modifier.weight(1f).fillMaxWidth(), Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                            AsyncImage(cover, "غلاف ${d.title}", Modifier.fillMaxWidth().heightIn(max = 540.dp), contentScale = ContentScale.Fit)
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Button({
+                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                    clipboard.setPrimaryClip(ClipData.newRawUri("غلاف المانجا", Uri.parse(cover)))
+                                    Toast.makeText(context, "تم نسخ رابط الغلاف", Toast.LENGTH_SHORT).show()
+                                }, Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Surface3, contentColor = Color.White), shape = ButtonShape) {
+                                    Icon(Icons.Default.ContentCopy, null); Spacer(Modifier.width(5.dp)); Text("نسخ", color = Color.White)
+                                }
+                                Button({
+                                    runCatching {
+                                        val request = DownloadManager.Request(Uri.parse(cover)).setTitle(d.title).setDescription("غلاف المانجا").setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED).setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "${d.slug.ifBlank { "manga" }}.jpg")
+                                        (context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager).enqueue(request)
+                                        Toast.makeText(context, "بدأ تنزيل الغلاف", Toast.LENGTH_SHORT).show()
+                                    }.onFailure { Toast.makeText(context, "تعذر تنزيل الغلاف", Toast.LENGTH_SHORT).show() }
+                                }, Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = accent, contentColor = Color.White), shape = ButtonShape) {
+                                    Icon(Icons.Default.Download, null); Spacer(Modifier.width(5.dp)); Text("تنزيل", color = Color.White)
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -2051,7 +2148,7 @@ private fun ReaderScreen(
     var keepScreenOn by remember { mutableStateOf(true) }
     var showPageNumber by remember { mutableStateOf(true) }
     var autoScrollEnabled by remember { mutableStateOf(false) }
-    var autoScrollSpeed by remember { mutableStateOf(3) }
+    var autoScrollSpeed by remember { mutableStateOf(1f) }  // multiplier: 0.5x → 4.0x
     var showSpeedPicker by remember { mutableStateOf(false) }
     var failedImageUrls by remember { mutableStateOf<Set<String>>(emptySet()) }
     var retryingAll by remember { mutableStateOf(false) }
@@ -2164,7 +2261,20 @@ private fun ReaderScreen(
                     }
                 } else {
                     LazyColumn(
-                        modifier = Modifier.fillMaxSize().clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { bars = !bars },
+                        modifier = Modifier.fillMaxSize().pointerInput(tapNav) {
+                            detectTapGestures { tap ->
+                                if (tapNav) {
+                                    val edgeW = size.width * 0.28f
+                                    when {
+                                        // اليسار (end في RTL) = التقدم للأمام
+                                        tap.x < edgeW -> scope.launch { listState.animateScrollBy(size.height.toFloat()) }
+                                        // اليمين (start في RTL) = الرجوع للخلف
+                                        tap.x > size.width - edgeW -> scope.launch { listState.animateScrollBy(-size.height.toFloat()) }
+                                        else -> bars = !bars
+                                    }
+                                } else bars = !bars
+                            }
+                        },
                         state = listState,
                         content = readerContent
                     )
@@ -2174,8 +2284,57 @@ private fun ReaderScreen(
         AnimatedVisibility(bars && state == 1, enter = fadeIn(tween(140)) + slideInVertically(tween(160)) { -it }, exit = fadeOut(tween(100)) + slideOutVertically(tween(120)) { -it }, label = "reader-top-bar") {
             Surface(color = Color.Black.copy(.92f)) { Column { Row(Modifier.statusBarsPadding().padding(horizontal = 4.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) { IconButton(onBack) { Icon(Icons.Default.ArrowForward, null, tint = Color.White) }; Column(Modifier.weight(1f).padding(horizontal = 4.dp)) { Text(manga.title, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis); Text(if (displayedChapterNum.isNotEmpty()) "الفصل $displayedChapterNum${if (displayedChapterTitle.isNotEmpty()) " • $displayedChapterTitle" else ""}" else chTitle, color = Color.White.copy(.7f), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }; if (showPageNumber && totalPages > 0) Text("$currentPage / $totalPages", color = Color.White, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 10.dp)); IconButton(onClick = { showReaderSettings = true }) { Icon(Icons.Default.Settings, "إعدادات القارئ", tint = Color.White) }; IconButton(onClick = { showChapterList = true }) { Icon(Icons.Default.List, "قائمة الفصول", tint = Color.White) } } } }
         }
-        AnimatedVisibility(visible = bars && state == 1, modifier = Modifier.align(Alignment.BottomCenter), enter = fadeIn(tween(140)) + slideInVertically(tween(160)) { it }, exit = fadeOut(tween(100)) + slideOutVertically(tween(120)) { it }, label = "reader-bottom-bar") { Surface(color = Color.Black.copy(.92f)) { Row(Modifier.navigationBarsPadding().padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) { Text("تمرير تلقائي", color = Color.White, fontSize = 12.sp, modifier = Modifier.weight(1f)); IconButton(onClick = { autoScrollEnabled = !autoScrollEnabled }) { Icon(if (autoScrollEnabled) Icons.Default.Pause else Icons.Default.PlayArrow, null, tint = accent) }; IconButton(onClick = { showSpeedPicker = !showSpeedPicker }) { Icon(Icons.Default.Timer, null, tint = Color.White) }; if (failedImageUrls.isNotEmpty()) IconButton(onClick = { retry() }) { Icon(Icons.Default.Sync, "إعادة الجلب", tint = Red) } } } }
-        if (showSpeedPicker) Surface(Modifier.align(Alignment.BottomCenter).padding(bottom = 62.dp), color = Surface3, shape = InputShape) { Row(Modifier.padding(8.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) { (1..5).forEach { speed -> FilterChip(autoScrollSpeed == speed, { autoScrollSpeed = speed; showSpeedPicker = false }, label = { Text("$speed") }) } } }
+        AnimatedVisibility(visible = bars && state == 1, modifier = Modifier.align(Alignment.BottomCenter), enter = fadeIn(tween(140)) + slideInVertically(tween(160)) { it }, exit = fadeOut(tween(100)) + slideOutVertically(tween(120)) { it }, label = "reader-bottom-bar") {
+            Surface(color = Color.Black.copy(.92f)) {
+                val speedNames = listOf("بطيء جداً", "بطيء", "متوسط", "سريع", "سريع جداً")
+                Row(Modifier.navigationBarsPadding().padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("تمرير تلقائي", color = Color.White, fontSize = 12.sp)
+                        if (autoScrollEnabled)
+                            Text(speedNames.getOrElse(autoScrollSpeed - 1) { "متوسط" }, color = accent, fontSize = 10.sp)
+                    }
+                    IconButton(onClick = { autoScrollEnabled = !autoScrollEnabled }) { Icon(if (autoScrollEnabled) Icons.Default.Pause else Icons.Default.PlayArrow, null, tint = accent) }
+                    IconButton(onClick = { showSpeedPicker = !showSpeedPicker }) { Icon(Icons.Default.Timer, null, tint = if (showSpeedPicker) accent else Color.White) }
+                    if (failedImageUrls.isNotEmpty()) IconButton(onClick = { retry() }) { Icon(Icons.Default.Sync, "إعادة الجلب", tint = Red) }
+                }
+            }
+        }
+        if (showSpeedPicker) {
+            Surface(
+                Modifier.align(Alignment.BottomCenter).padding(bottom = 64.dp, start = 16.dp, end = 16.dp),
+                color = Surface3, shape = InputShape, shadowElevation = 8.dp
+            ) {
+                val speedLabels = listOf(
+                    "بطيء جداً"  to Icons.Default.Snooze,
+                    "بطيء"       to Icons.Default.DirectionsWalk,
+                    "متوسط"      to Icons.Default.DirectionsRun,
+                    "سريع"       to Icons.Default.Speed,
+                    "سريع جداً"  to Icons.Default.Bolt
+                )
+                Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+                    speedLabels.forEachIndexed { i, (label, icon) ->
+                        val speed = i + 1
+                        val sel = autoScrollSpeed == speed
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (sel) accent.copy(.18f) else Color.Transparent)
+                                .clickable { autoScrollSpeed = speed; showSpeedPicker = false }
+                                .padding(horizontal = 16.dp, vertical = 11.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Icon(icon, null, tint = if (sel) accent else TextSec, modifier = Modifier.size(18.dp))
+                            Text(label, color = if (sel) accent else TextPri, fontSize = 14.sp,
+                                fontWeight = if (sel) FontWeight.SemiBold else FontWeight.Normal,
+                                modifier = Modifier.weight(1f))
+                            if (sel) Icon(Icons.Default.Check, null, tint = accent, modifier = Modifier.size(16.dp))
+                        }
+                    }
+                }
+            }
+        }
         if (showReaderSettings) {
             ModalBottomSheet(onDismissRequest = { showReaderSettings = false }, containerColor = Color.Black, contentColor = Color.White, dragHandle = { BottomSheetDefaults.DragHandle(color = TextDim) }) {
                 Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
