@@ -2,9 +2,13 @@ package com.mangalore.app
 
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.app.DownloadManager
+import android.content.ClipData
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Environment
+import android.widget.Toast
 import android.view.WindowManager
 import android.os.Handler
 import android.os.Looper
@@ -55,6 +59,8 @@ import androidx.compose.ui.text.font.*
 import androidx.compose.ui.text.style.*
 import androidx.compose.ui.unit.*
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
 import coil.compose.SubcomposeAsyncImage
 import coil.request.ImageRequest
@@ -959,6 +965,7 @@ private fun HomeScreen(accent: Color, onMenu: () -> Unit, onSearch: () -> Unit, 
     LaunchedEffect(Unit) { load() }
 
     val list    = if (tab == 1) popular else latest
+    val feature = popular.firstOrNull()
 
     Box(Modifier.fillMaxSize()) {
         LazyVerticalGrid(
@@ -994,6 +1001,21 @@ private fun HomeScreen(accent: Color, onMenu: () -> Unit, onSearch: () -> Unit, 
                 }
             }
             return@LazyVerticalGrid
+        }
+
+        // ── Most popular hero ─────────────────────────────────
+        if (feature != null) item(span = { GridItemSpan(3) }) {
+            Surface(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 6.dp).clickable { onPick(feature) }, color = Surface2, shape = RoundedCornerShape(18.dp), border = BorderStroke(1.dp, Border)) {
+                Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Box(Modifier.size(82.dp, 116.dp).clip(RoundedCornerShape(12.dp))) { Img(feature.coverUrl, Modifier.fillMaxSize()) }
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                        Text("الأكثر شعبية", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Text(feature.title, color = TextPri, fontSize = 17.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        if (feature.latestChapter.isNotBlank()) Text(feature.latestChapter, color = TextSec, fontSize = 11.sp)
+                        Button({ onPick(feature) }, colors = ButtonDefaults.buttonColors(containerColor = accent), shape = ButtonShape, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)) { Icon(Icons.Default.PlayArrow, null, Modifier.size(15.dp)); Spacer(Modifier.width(4.dp)); Text("ابدأ القراءة", fontSize = 12.sp, color = Color.White) }
+                    }
+                }
+            }
         }
 
         // ── Tabs ──────────────────────────────────────────────
@@ -1380,6 +1402,7 @@ private fun DetailScreen(
     var comments by remember { mutableStateOf(listOf<String>()) }
     var richComments by remember { mutableStateOf<List<CommentRecord>>(emptyList()) }
     var commentSpoiler by remember { mutableStateOf(false) }
+    var showCoverFullScreen by remember { mutableStateOf(false) }
     var reactions by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
     val visibleRemoteComments = richComments.filter { it.parentId == null }
     val repliesByParent = richComments.filter { it.parentId != null }.groupBy { it.parentId }
@@ -1438,6 +1461,7 @@ private fun DetailScreen(
 
                     // Cover (right in RTL = first)
                     Box(Modifier.width(CoverWidthMd).height(CoverHeightMd).clip(RoundedCornerShape(12.dp))
+                        .clickable { showCoverFullScreen = true }
                         .shadow(12.dp, RoundedCornerShape(12.dp))
                         .border(1.5.dp, Color.White.copy(.15f), RoundedCornerShape(12.dp))) {
                         Img(d.coverFull.ifEmpty { d.coverUrl }, Modifier.fillMaxSize())
@@ -1448,6 +1472,11 @@ private fun DetailScreen(
                         verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text(d.title, color = TextPri, fontSize = 17.sp, fontWeight = FontWeight.Bold,
                             lineHeight = 22.sp,
+                            modifier = Modifier.clickable {
+                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                clipboard.setPrimaryClip(ClipData.newPlainText("اسم المانجا", d.title))
+                                Toast.makeText(context, "تم نسخ اسم المانجا", Toast.LENGTH_SHORT).show()
+                            },
                             style = LocalTextStyle.current.copy(
                                 shadow = Shadow(Color.Black, Offset(0f,1f), blurRadius = 4f)))
                         if (d.author.isNotEmpty())
@@ -1913,6 +1942,34 @@ private fun DetailScreen(
             },
             dismissButton = { TextButton(onClick = { showDownloadDialog = false }) { Text("إلغاء") } }
         )
+    }
+    if (showCoverFullScreen) {
+        val cover = d.coverFull.ifEmpty { d.coverUrl }
+        Dialog(onDismissRequest = { showCoverFullScreen = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+            Surface(Modifier.fillMaxSize(), color = Color.Black) {
+                Column(Modifier.fillMaxSize().padding(18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        IconButton({ showCoverFullScreen = false }) { Icon(Icons.Default.Close, "إغلاق", tint = Color.White) }
+                        Text("غلاف المانجا", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    }
+                    Box(Modifier.weight(1f).fillMaxWidth(), Alignment.Center) { AsyncImage(cover, "غلاف ${d.title}", Modifier.fillMaxWidth().heightIn(max = 620.dp), contentScale = ContentScale.Fit) }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Button({
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                            clipboard.setPrimaryClip(ClipData.newRawUri("غلاف المانجا", Uri.parse(cover)))
+                            Toast.makeText(context, "تم نسخ رابط الغلاف", Toast.LENGTH_SHORT).show()
+                        }, Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Surface3), shape = ButtonShape) { Icon(Icons.Default.ContentCopy, null); Spacer(Modifier.width(5.dp)); Text("نسخ") }
+                        Button({
+                            runCatching {
+                                val request = DownloadManager.Request(Uri.parse(cover)).setTitle(d.title).setDescription("غلاف المانجا").setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED).setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "${d.slug.ifBlank { "manga" }}.jpg")
+                                (context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager).enqueue(request)
+                                Toast.makeText(context, "بدأ تنزيل الغلاف", Toast.LENGTH_SHORT).show()
+                            }.onFailure { Toast.makeText(context, "تعذر تنزيل الغلاف", Toast.LENGTH_SHORT).show() }
+                        }, Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = accent), shape = ButtonShape) { Icon(Icons.Default.Download, null); Spacer(Modifier.width(5.dp)); Text("تنزيل") }
+                    }
+                }
+            }
+        }
     }
 }
 
