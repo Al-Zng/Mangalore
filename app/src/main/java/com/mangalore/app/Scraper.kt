@@ -118,13 +118,20 @@ object Scraper {
         "Harem" to "حريم", "Thriller" to "إثارة", "Tragedy" to "مأساة", "Crime" to "جريمة"
     )[value] ?: value
 
-    private fun translateFormat(value: String, country: String): String = when {
-        value.equals("ONE_SHOT", true) -> "فصل واحد"
-        value.equals("NOVEL", true) -> "رواية"
-        country.startsWith("KO", true) || country.startsWith("KR", true) -> "مانهوا"
-        country.startsWith("ZH", true) || country.equals("CN", true) || country.equals("TW", true) -> "مانها"
-        value.equals("MANGA", true) || country.startsWith("JA", true) || country.equals("JP", true) -> "مانجا"
-        else -> ""
+    private fun translateFormat(value: String, country: String): String {
+        // Format overrides first (ONE_SHOT / NOVEL don't depend on country)
+        if (value.equals("ONE_SHOT", true)) return "فصل واحد"
+        if (value.equals("NOVEL", true)) return "رواية"
+        // Country code is the authoritative signal from MangaDex originalLanguage
+        val c = country.uppercase()
+        return when {
+            c == "KO" || c == "KR" || c.startsWith("KO-") -> "مانهوا"
+            c == "ZH" || c == "ZH-HK" || c == "ZH-RO" || c == "CN" || c == "TW" -> "مانها"
+            c == "JA" || c == "JP" -> "مانجا"
+            // Only fall back to the format string when country gives no info
+            value.equals("MANGA", true) -> "مانجا"
+            else -> ""
+        }
     }
 
     private fun normalizeWorkType(value: String): String {
@@ -232,14 +239,22 @@ object Scraper {
     }
 
     private fun fetchMangaDex(title: String): DexMetadata? = runCatching {
-        val encoded = java.net.URLEncoder.encode(title, "UTF-8")
-        val request = Request.Builder().url("https://api.mangadex.org/manga?title=$encoded&limit=5&order[relevance]=desc&includes[]=author&includes[]=artist&includes[]=cover_art").build()
+        // Clean title for search: remove/replace chars that break MangaDex search
+        val cleanTitle = title
+            .replace(Regex("[:'\"!?]"), " ")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+        val encoded = java.net.URLEncoder.encode(cleanTitle, "UTF-8")
+        val request = Request.Builder()
+            .url("https://api.mangadex.org/manga?title=$encoded&limit=8&order[relevance]=desc&includes[]=author&includes[]=artist&includes[]=cover_art&contentRating[]=safe&contentRating[]=suggestive&contentRating[]=erotica")
+            .build()
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) return@use null
             val data = JSONObject(response.body?.string().orEmpty()).optJSONArray("data")
             if (data == null || data.length() == 0) return@use null
+            // Normalize string for comparison: lowercase, remove all non-alphanumeric
             fun norm(s: String) = s.lowercase().replace(Regex("[^\\p{L}\\p{N}]"), "")
-            val wanted = norm(title)
+            val wanted = norm(cleanTitle)
             var manga: JSONObject? = null
             var bestScore = -1
             for (i in 0 until data.length()) {
@@ -250,17 +265,36 @@ object Scraper {
                 val titleObj = a.optJSONObject("title")
                 titleObj?.keys()?.forEach { names += titleObj.optString(it) }
                 val alt = a.optJSONArray("altTitles")
-                for (j in 0 until (alt?.length() ?: 0)) alt?.optJSONObject(j)?.keys()?.forEach { key -> names += alt.optJSONObject(j)?.optString(key).orEmpty() }
+                for (j in 0 until (alt?.length() ?: 0)) {
+                    val altObj = alt?.optJSONObject(j) ?: continue
+                    altObj.keys().forEach { key -> names += altObj.optString(key) }
+                }
                 for (name in names) {
                     val n = norm(name)
-                    if (n == wanted) score = 100
+                    if (n == wanted) { score = 100; break }
                     else if (n.contains(wanted) || wanted.contains(n)) score = maxOf(score, 80)
+                    else {
+                        // Partial word overlap scoring
+                        val wWords = wanted.split(Regex("(?<=\\p{L})(?=\\p{N})|(?<=\\p{N})(?=\\p{L})"))
+                        val nWords = n.split(Regex("(?<=\\p{L})(?=\\p{N})|(?<=\\p{N})(?=\\p{L})"))
+                        if (wanted.length > 5 && n.length > 5) {
+                            val overlap = wWords.count { nWords.contains(it) && it.length > 3 }
+                            if (overlap > 0) score = maxOf(score, 40 + overlap * 10)
+                        }
+                    }
                 }
                 if (score > bestScore) { bestScore = score; manga = candidate }
             }
-            val selected = manga ?: data.optJSONObject(0) ?: return@use null
+            // Only use MangaDex data when we have a confident match (score >= 60)
+            if (bestScore < 60) {
+                Log.w("MangaloreDex", "No confident match for '$title' (best score=$bestScore), skipping MangaDex metadata")
+                return@use null
+            }
+            val selected = manga ?: return@use null
             val attr = selected.optJSONObject("attributes") ?: return@use null
-            val description = attr.optJSONObject("description")?.optString("ar")?.ifBlank { attr.optJSONObject("description")?.optString("en") }.orEmpty()
+            val description = attr.optJSONObject("description")
+                ?.let { it.optString("ar").ifBlank { it.optString("en") } }
+                .orEmpty()
             var author = ""; var artist = ""; var cover = ""
             val rels = selected.optJSONArray("relationships")
             for (i in 0 until (rels?.length() ?: 0)) {
@@ -273,10 +307,21 @@ object Scraper {
                     }
                 }
             }
+            // Determine type from originalLanguage only (not a hardcoded format string)
             val country = attr.optString("originalLanguage").uppercase()
-            DexMetadata(author, artist, when (attr.optString("status")) {
-                "completed" -> "مكتملة"; "ongoing" -> "مستمرة"; "hiatus" -> "متوقفة مؤقتاً"; "cancelled" -> "ملغاة"; else -> ""
-            }, attr.optString("year"), translateFormat("MANGA", country), attr.optString("updatedAt"), description, cover, emptyList())
+            val format = translateFormat("", country)
+            Log.d("MangaloreDex", "Matched '$title' score=$bestScore country=$country format=$format")
+            DexMetadata(
+                author, artist,
+                when (attr.optString("status")) {
+                    "completed" -> "مكتملة"; "ongoing" -> "مستمرة"
+                    "hiatus" -> "متوقفة مؤقتاً"; "cancelled" -> "ملغاة"; else -> ""
+                },
+                attr.optString("year"),
+                format,
+                attr.optString("updatedAt"),
+                description, cover, emptyList()
+            )
         }
     }.getOrNull()
 
