@@ -33,6 +33,7 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
@@ -962,6 +963,7 @@ private fun GoogleAuthDialog(onSigned: (Uri) -> Unit, onDismiss: () -> Unit) {
 // ══════════════════════════════════════════════════════════════
 // HOME SCREEN
 // ══════════════════════════════════════════════════════════════
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun HomeScreen(
     accent: Color, onMenu: () -> Unit, onSearch: () -> Unit,
@@ -2148,7 +2150,8 @@ private fun ReaderScreen(
     var keepScreenOn by remember { mutableStateOf(true) }
     var showPageNumber by remember { mutableStateOf(true) }
     var autoScrollEnabled by remember { mutableStateOf(false) }
-    var autoScrollSpeed by remember { mutableStateOf(1f) }  // multiplier: 0.5x → 4.0x
+    var autoScrollSpeed by remember { mutableStateOf(1) }
+    var tapNav by remember { mutableStateOf(true) }
     var showSpeedPicker by remember { mutableStateOf(false) }
     var failedImageUrls by remember { mutableStateOf<Set<String>>(emptySet()) }
     var retryingAll by remember { mutableStateOf(false) }
